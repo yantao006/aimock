@@ -18,5 +18,9 @@
   "fal": {
     "vendorPaths": true,
     "webhook": true
+  },
+  "falQueue": {
+    "pollsBeforeInProgress": 1,
+    "pollsBeforeCompleted": 2
   }
 }

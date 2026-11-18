@@ -221,4 +221,84 @@ describe("fal.ai vendor-path and webhook compatibility (opt-in)", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).images[0].url).toBe("https://mock.fal.media/flux3.png");
   });
+
+  test("startFromConfig wires top-level falQueue.pollsBeforeCompleted: 2 (400 then 200) and 3 (400, 400, 200) with webhook", async () => {
+    const webhook = await startWebhookServer();
+    closeHooks.push(webhook.close);
+
+    // 1. pollsBeforeCompleted: 2 advances IN_QUEUE -> IN_PROGRESS (poll 1: 400) -> COMPLETED (poll 2: 200)
+    const twoPollStart = await startFromConfig({
+      port: 0,
+      host: "127.0.0.1",
+      fal: { vendorPaths: true, webhook: true },
+      falQueue: { pollsBeforeCompleted: 2 },
+    });
+    mock = twoPollStart.llmock;
+    mock.onFalImage("openai/gpt-image-2.6/flare/edit", {
+      images: [{ url: "https://mock.fal.media/two-step.png" }],
+    });
+
+    const submitTwo = await fetch(
+      `${twoPollStart.url}/fal/openai/gpt-image-2.6/flare/edit?fal_webhook=${encodeURIComponent(webhook.url)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Key k" },
+        body: JSON.stringify({ prompt: "brighten" }),
+      },
+    );
+    expect(submitTwo.status).toBe(200);
+    const envTwo = await submitTwo.json();
+    const resultUrlTwo = `${twoPollStart.url}/fal/openai/gpt-image-2.6/requests/${envTwo.request_id}`;
+
+    expect((await fetch(resultUrlTwo)).status).toBe(400);
+    expect(webhook.received).toHaveLength(0);
+    const doneTwo = await fetch(resultUrlTwo);
+    expect(doneTwo.status).toBe(200);
+    expect((await doneTwo.json()).images[0].url).toBe("https://mock.fal.media/two-step.png");
+    expect((await waitFor(() => webhook.received[0])).body).toMatchObject({
+      request_id: envTwo.request_id,
+      status: "OK",
+    });
+
+    await mock.stop();
+    mock = undefined;
+
+    // 2. Top-level falQueue overrides llm.falQueue; pollsBeforeCompleted: 3 yields 400 -> 400 -> 200 + webhook
+    const threePollStart = await startFromConfig({
+      port: 0,
+      host: "127.0.0.1",
+      llm: {
+        falQueue: { pollsBeforeInProgress: 1, pollsBeforeCompleted: 1 },
+      },
+      fal: { vendorPaths: true, webhook: true },
+      falQueue: { pollsBeforeInProgress: 1, pollsBeforeCompleted: 3 },
+    });
+    mock = threePollStart.llmock;
+    mock.onFalImage("openai/gpt-image-2.6/flare/edit", {
+      images: [{ url: "https://mock.fal.media/three-step.png" }],
+    });
+
+    const submitThree = await fetch(
+      `${threePollStart.url}/fal/openai/gpt-image-2.6/flare/edit?fal_webhook=${encodeURIComponent(webhook.url)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Key k" },
+        body: JSON.stringify({ prompt: "brighten" }),
+      },
+    );
+    expect(submitThree.status).toBe(200);
+    const envThree = await submitThree.json();
+    const resultUrlThree = `${threePollStart.url}/fal/openai/gpt-image-2.6/requests/${envThree.request_id}`;
+
+    expect((await fetch(resultUrlThree)).status).toBe(400);
+    expect((await fetch(resultUrlThree)).status).toBe(400);
+    expect(webhook.received).toHaveLength(1);
+    const doneThree = await fetch(resultUrlThree);
+    expect(doneThree.status).toBe(200);
+    expect((await doneThree.json()).images[0].url).toBe("https://mock.fal.media/three-step.png");
+    expect((await waitFor(() => webhook.received[1])).body).toMatchObject({
+      request_id: envThree.request_id,
+      status: "OK",
+    });
+  });
 });

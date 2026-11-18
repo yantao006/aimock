@@ -306,6 +306,14 @@
           <code>CANCELLED</code> and subsequent polls keep reporting that state.
         </p>
 
+        <p>
+          In an <code>aimock.json</code> config file, set <code>falQueue</code> at the top level or
+          under <code>llm.falQueue</code>:
+          <code>"falQueue": { "pollsBeforeInProgress": 1, "pollsBeforeCompleted": 2 }</code> (set
+          <code>pollsBeforeCompleted</code> to <code>3</code> if your poller expects two pending
+          responses before completion).
+        </p>
+
         <h2>JSON Fixture File</h2>
 
         <div class="code-block">

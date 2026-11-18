@@ -31,4 +31,4 @@ Set each provider's `api_base_url` in Provider1's database to the matching prefi
 Each provider uses a distinct path prefix (`/seeapi`, `/kie`, `/fal`) so they never collide on the same port.
 SeeAPI enforces `Idempotency-Key` and strict input field validation (`strictInputFields: true`).
 KIE returns `resultJson` as a JSON-encoded string and delivers `callBackUrl` payloads on completion.
-fal.ai runs with `vendorPaths: true` and `webhook: true` so Provider1 calls work without the `x-fal-target-host` header and receive `?fal_webhook=` callbacks.
+fal.ai runs with `vendorPaths: true`, `webhook: true`, and `falQueue: { pollsBeforeInProgress: 1, pollsBeforeCompleted: 2 }`, so Provider1 calls work without `x-fal-target-host`, receive HTTP `400` on the first result poll before returning `200` on the second (set `pollsBeforeCompleted: 3` for two `400` polls), and receive `?fal_webhook=` callbacks.

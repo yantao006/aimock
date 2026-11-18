@@ -1310,3 +1310,57 @@ describe("startFromConfig: llm.record.mcp needs llm.enableMcpRecording", () => {
     expect(construction.mock.calls[0][0].logLevel).toBeUndefined();
   });
 });
+
+describe("startFromConfig: falQueue and video queue progression options", () => {
+  let cleanups: Array<() => Promise<void>> = [];
+  let construction: MockInstance<typeof llmockModule.createLLMockWithResolvedAuth>;
+
+  beforeEach(() => {
+    construction = vi.spyOn(llmockModule, "createLLMockWithResolvedAuth");
+    cleanups = [];
+  });
+
+  afterEach(async () => {
+    for (const cleanup of cleanups) await cleanup();
+    construction.mockRestore();
+  });
+
+  it("merges top-level over llm for falQueue and async video queue configs", async () => {
+    const { llmock, url } = await startFromConfig({
+      llm: {
+        falQueue: { pollsBeforeInProgress: 1, pollsBeforeCompleted: 5 },
+        openRouterVideo: { pollsBeforeCompleted: 2 },
+        veoVideo: { pollsBeforeInProgress: 1 },
+        grokVideo: { pollsBeforeInProgress: 1, pollsBeforeCompleted: 4 },
+        bytePlusVideo: { pollsBeforeCompleted: 2 },
+      },
+      falQueue: { pollsBeforeCompleted: 2 },
+      grokVideo: { pollsBeforeCompleted: 2 },
+    });
+    cleanups.push(() => llmock.stop());
+
+    expect(construction.mock.calls[0][0]).toMatchObject({
+      falQueue: { pollsBeforeInProgress: 1, pollsBeforeCompleted: 2 },
+      openRouterVideo: { pollsBeforeCompleted: 2 },
+      veoVideo: { pollsBeforeInProgress: 1 },
+      grokVideo: { pollsBeforeInProgress: 1, pollsBeforeCompleted: 2 },
+      bytePlusVideo: { pollsBeforeCompleted: 2 },
+    });
+
+    // Behavioral check on grokVideo wired through startFromConfig
+    llmock.addFixture({
+      match: { userMessage: "config grok", endpoint: "video" },
+      response: { video: { id: "vid_cfg", status: "completed", url: "https://example.com/v.mp4" } },
+    });
+    const submit = await fetch(`${url}/v1/videos/generations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "grok-imagine-video", prompt: "config grok" }),
+    });
+    const { request_id } = (await submit.json()) as { request_id: string };
+    const poll1 = await (await fetch(`${url}/v1/videos/${request_id}`)).json();
+    expect(poll1.status).toBe("pending");
+    const poll2 = await (await fetch(`${url}/v1/videos/${request_id}`)).json();
+    expect(poll2.status).toBe("done");
+  });
+});

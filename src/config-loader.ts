@@ -11,10 +11,12 @@ import type {
   ApiKeyAuthConfig,
   ChaosConfig,
   FalConfig,
+  FalQueueConfig,
   KieConfig,
   McpRecordConfig,
   MisbehaviorConfig,
   MisbehaviorFaultId,
+  MockServerOptions,
   Mountable,
   RecordConfig,
   ResponsesToolsMode,
@@ -156,10 +158,25 @@ export interface AimockConfig {
     kie?: KieConfig;
     /** fal compatibility config (also accepted at top-level `config.fal`). */
     fal?: FalConfig;
+    /** fal queue poll-progression config (also accepted at top-level `config.falQueue`). */
+    falQueue?: FalQueueConfig;
+    /** OpenRouter video queue config (also accepted at top-level `config.openRouterVideo`). */
+    openRouterVideo?: FalQueueConfig;
+    /** Veo video queue config (also accepted at top-level `config.veoVideo`). */
+    veoVideo?: FalQueueConfig;
+    /** Grok video queue config (also accepted at top-level `config.grokVideo`). */
+    grokVideo?: FalQueueConfig;
+    /** BytePlus video queue config (also accepted at top-level `config.bytePlusVideo`). */
+    bytePlusVideo?: FalQueueConfig;
   };
   seeapi?: SeeapiConfig;
   kie?: KieConfig;
   fal?: FalConfig;
+  falQueue?: FalQueueConfig;
+  openRouterVideo?: FalQueueConfig;
+  veoVideo?: FalQueueConfig;
+  grokVideo?: FalQueueConfig;
+  bytePlusVideo?: FalQueueConfig;
   mcp?: MCPConfig;
   a2a?: A2AConfig;
   agui?: AGUIConfig;
@@ -182,6 +199,30 @@ function llmRecordOf(record: AimockRecordConfig | undefined): RecordConfig | und
 export function loadConfig(configPath: string): AimockConfig {
   const raw = fs.readFileSync(configPath, "utf-8");
   return JSON.parse(raw) as AimockConfig;
+}
+
+const MERGED_PROVIDER_SECTIONS = [
+  "seeapi",
+  "kie",
+  "fal",
+  "falQueue",
+  "openRouterVideo",
+  "veoVideo",
+  "grokVideo",
+  "bytePlusVideo",
+] as const;
+
+/** Merge `topLevel` over `llm` for provider and queue sections so top-level keys win. */
+function mergeProviderAndQueueSections(config: AimockConfig): Partial<MockServerOptions> {
+  const merged: Partial<MockServerOptions> = {};
+  for (const key of MERGED_PROVIDER_SECTIONS) {
+    const top = config[key];
+    const nested = config.llm?.[key];
+    if (top !== undefined || nested !== undefined) {
+      Object.assign(merged, { [key]: { ...nested, ...top } });
+    }
+  }
+  return merged;
 }
 
 /** C3: `llm.record.mcp` is an object with at least one mount. */
@@ -337,15 +378,7 @@ export async function startFromConfig(
       strictToolArguments: overrides?.strictToolArguments ?? configStrictToolArguments,
       responsesTools: overrides?.responsesTools ?? responsesTools,
       policy,
-      ...(config.seeapi !== undefined || config.llm?.seeapi !== undefined
-        ? { seeapi: { ...config.llm?.seeapi, ...config.seeapi } }
-        : {}),
-      ...(config.kie !== undefined || config.llm?.kie !== undefined
-        ? { kie: { ...config.llm?.kie, ...config.kie } }
-        : {}),
-      ...(config.fal !== undefined || config.llm?.fal !== undefined
-        ? { fal: { ...config.llm?.fal, ...config.fal } }
-        : {}),
+      ...mergeProviderAndQueueSections(config),
     },
     resolvedAuth,
   );

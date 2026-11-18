@@ -951,7 +951,13 @@ export interface AimockConfig {
     // (undocumented)
     auth?: ApiKeyAuthConfig;
     // (undocumented)
+    bytePlusVideo?: FalQueueConfig;
+    // (undocumented)
     fal?: FalConfig;
+    // (undocumented)
+    falQueue?: FalQueueConfig;
+    // (undocumented)
+    grokVideo?: FalQueueConfig;
     // (undocumented)
     host?: string;
     // (undocumented)
@@ -974,11 +980,18 @@ export interface AimockConfig {
         seeapi?: SeeapiConfig;
         kie?: KieConfig;
         fal?: FalConfig;
+        falQueue?: FalQueueConfig;
+        openRouterVideo?: FalQueueConfig;
+        veoVideo?: FalQueueConfig;
+        grokVideo?: FalQueueConfig;
+        bytePlusVideo?: FalQueueConfig;
     };
     // (undocumented)
     mcp?: MCPConfig;
     // (undocumented)
     metrics?: boolean;
+    // (undocumented)
+    openRouterVideo?: FalQueueConfig;
     // (undocumented)
     port?: number;
     // (undocumented)
@@ -993,6 +1006,8 @@ export interface AimockConfig {
     strict?: boolean;
     // (undocumented)
     vector?: VectorConfig;
+    // (undocumented)
+    veoVideo?: FalQueueConfig;
 }
 
 // @public
