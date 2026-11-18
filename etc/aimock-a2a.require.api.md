@@ -208,6 +208,7 @@ interface ChatCompletionRequest {
     customTools?: CustomToolDefinition[];
     embeddingInput?: string;
     _endpointType?: string;
+    _inputImagesCount?: number;
     // (undocumented)
     max_tokens?: number;
     // (undocumented)
@@ -361,6 +362,8 @@ interface Fixture {
     nonStreamingTiming?: boolean;
     nonStreamingTimingAllProviders?: boolean;
     openRouterProcessing?: boolean;
+    pollsBeforeCompleted?: number;
+    pollsBeforeInProgress?: number;
     // (undocumented)
     recordedTimings?: RecordedTimings;
     // (undocumented)
@@ -417,12 +420,15 @@ interface FixtureMatch {
         dimensions?: unknown;
     };
     // (undocumented)
-    endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
+    endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "seeapi" | "kie" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
+    hasInputImages?: boolean;
     hasToolResult?: boolean;
+    inputImageCount?: number;
     // (undocumented)
     inputText?: string | RegExp;
     // (undocumented)
     model?: string | RegExp;
+    modelOrPrompt?: string | RegExp;
     // (undocumented)
     predicate?: (req: ChatCompletionRequest) => boolean;
     // (undocumented)

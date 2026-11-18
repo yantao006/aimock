@@ -2,6 +2,7 @@ import type http from "node:http";
 import crypto from "node:crypto";
 import type {
   ChatCompletionRequest,
+  FalConfig,
   FalQueueConfig,
   Fixture,
   HandlerDefaults,
@@ -14,7 +15,9 @@ import {
   isAudioResponse,
   isErrorResponse,
   serializeErrorResponse,
+  isImageResponse,
   isJSONResponse,
+  isJsonObject,
   flattenHeaders,
   getContext,
   getTestId,
@@ -46,13 +49,20 @@ import { audioToFalFile } from "./fal-audio.js";
 const FAL_QUEUE_MAX_ENTRIES = 10_000;
 const FAL_QUEUE_TTL_MS = 3_600_000; // 1 hour
 
-type FalQueueStatus = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+type FalQueueStatus = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED";
 
 interface FalQueueJob {
   requestId: string;
   modelId: string;
+  queueBaseUrl: string;
   status: FalQueueStatus;
+  terminalStatus: "COMPLETED" | "FAILED";
   result: unknown;
+  errorMessage?: string;
+  isVendorPath?: boolean;
+  webhookUrl?: string;
+  webhookEnabled?: boolean;
+  webhookSent?: boolean;
   /**
    * Billed quantity emitted as the `x-fal-billable-units` header on the
    * completed `queue-result` response. Sourced from the fixture's
@@ -218,8 +228,10 @@ export function resolveProgression(config: FalQueueConfig | undefined): {
  * IN_QUEUE → IN_PROGRESS → COMPLETED based on poll-count thresholds. No-op
  * once COMPLETED or CANCELLED.
  */
-function advanceJob(job: FalQueueJob): void {
-  if (job.status === "COMPLETED" || job.status === "CANCELLED") return;
+function advanceJob(job: FalQueueJob): boolean {
+  if (job.status === "COMPLETED" || job.status === "FAILED" || job.status === "CANCELLED") {
+    return false;
+  }
 
   job.pollCount += 1;
   // Check IN_PROGRESS before COMPLETED so a job whose thresholds are equal
@@ -232,15 +244,18 @@ function advanceJob(job: FalQueueJob): void {
       level: "INFO",
       message: "Job started processing.",
     });
+    return false;
   } else if (job.pollCount >= job.pollsBeforeCompleted) {
-    job.status = "COMPLETED";
+    job.status = job.terminalStatus;
     job.completedAt = Date.now();
     job.logs.push({
       timestamp: new Date().toISOString(),
-      level: "INFO",
-      message: "Job completed.",
+      level: job.terminalStatus === "FAILED" ? "ERROR" : "INFO",
+      message: job.terminalStatus === "FAILED" ? "Job failed." : "Job completed.",
     });
+    return true;
   }
+  return false;
 }
 
 function queuePosition(job: FalQueueJob): number {
@@ -252,18 +267,47 @@ function statusResponseBody(job: FalQueueJob): Record<string, unknown> {
   const body: Record<string, unknown> = {
     status: job.status,
     request_id: job.requestId,
-    response_url: `https://${FAL_HOSTS.queue}/${job.modelId}/requests/${job.requestId}`,
+    response_url: `${job.queueBaseUrl}/requests/${job.requestId}`,
     logs: job.logs,
   };
   if (job.status === "IN_QUEUE" || job.status === "IN_PROGRESS") {
     body.queue_position = queuePosition(job);
   }
-  if (job.status === "COMPLETED" && job.completedAt != null) {
+  if ((job.status === "COMPLETED" || job.status === "FAILED") && job.completedAt != null) {
     body.metrics = {
       inference_time: (job.completedAt - job.submittedAt) / 1000,
     };
   }
   return body;
+}
+
+const FAL_WEBHOOK_TIMEOUT_MS = 5_000;
+
+async function deliverFalWebhook(job: FalQueueJob, logger: Logger): Promise<void> {
+  if (!job.webhookUrl || !job.webhookEnabled || job.webhookSent) return;
+  job.webhookSent = true;
+  const webhookBody: Record<string, unknown> = {
+    request_id: job.requestId,
+    status: job.status === "FAILED" ? "ERROR" : "OK",
+    payload: job.status === "FAILED" ? null : job.result,
+  };
+  webhookBody.error = job.status === "FAILED" ? (job.errorMessage ?? "Request failed") : null;
+  try {
+    const res = await fetch(job.webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(webhookBody),
+      signal: AbortSignal.timeout(FAL_WEBHOOK_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      logger.warn(
+        `fal webhook to ${job.webhookUrl} for request ${job.requestId} returned HTTP ${res.status}`,
+      );
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    logger.warn(`fal webhook to ${job.webhookUrl} for request ${job.requestId} failed: ${detail}`);
+  }
 }
 
 // ─── Hosts and routing ──────────────────────────────────────────────────
@@ -433,16 +477,59 @@ function falTargetHost(req: http.IncomingMessage): string | undefined {
  * request falls through to the legacy `/fal/queue/...` and `/fal/run/...`
  * routes, which roll (and delay) their own.
  */
-export function falWillHandle(req: http.IncomingMessage, pathname: string): boolean {
+const LEGACY_FAL_QUEUE_SUBMIT_RE = /^\/fal\/queue\/submit\/(.+)$/;
+const LEGACY_FAL_QUEUE_REQUESTS_RE = /^\/fal\/queue\/requests\/(.+)$/;
+const LEGACY_FAL_RUN_RE = /^\/fal\/run\/(.+)$/;
+
+function isLegacyFalPath(pathname: string): boolean {
+  return (
+    LEGACY_FAL_QUEUE_SUBMIT_RE.test(pathname) ||
+    LEGACY_FAL_QUEUE_REQUESTS_RE.test(pathname) ||
+    LEGACY_FAL_RUN_RE.test(pathname)
+  );
+}
+
+function queueBaseModelId(modelId: string): string {
+  const parts = modelId.split("/").filter(Boolean);
+  return parts.length > 2 ? parts.slice(0, 2).join("/") : modelId;
+}
+
+function extractFalWebhookUrl(rawUrl: string | undefined, logger?: Logger): string | undefined {
+  if (!rawUrl || !rawUrl.includes("fal_webhook=")) return undefined;
+  try {
+    const parsed = new URL(rawUrl, "http://localhost");
+    const val = parsed.searchParams.get("fal_webhook");
+    if (!val) return undefined;
+    const target = new URL(val);
+    if (target.protocol !== "http:" && target.protocol !== "https:") {
+      logger?.warn(`Ignoring non-http fal_webhook URL: ${val}`);
+      return undefined;
+    }
+    return target.toString();
+  } catch {
+    logger?.warn(`Ignoring malformed fal_webhook query parameter on ${rawUrl}`);
+    return undefined;
+  }
+}
+
+export function falWillHandle(
+  req: http.IncomingMessage,
+  pathname: string,
+  falConfig?: FalConfig,
+): boolean {
   const targetHost = falTargetHost(req);
-  if (!targetHost) return false;
-  return classifyRoute(req, pathname, targetHost) !== null;
+  if (targetHost) return classifyRoute(req, pathname, targetHost) !== null;
+  if (falConfig?.vendorPaths && !isLegacyFalPath(pathname)) {
+    return classifyRoute(req, pathname, FAL_HOSTS.queue) !== null;
+  }
+  return false;
 }
 
 /**
  * General fal.ai handler. Routes by `x-fal-target-host` header (the convention
  * used by `@fal-ai/client`'s server-side requestMiddleware workaround for the
- * fact that `proxyUrl` is browser-only).
+ * fact that `proxyUrl` is browser-only), or by vendor-path mode when
+ * `defaults.fal?.vendorPaths` is enabled.
  *
  * Returns `"passthrough"` when the request does not look like a host-mirrored
  * fal call, so the caller can fall back to the legacy `/fal/queue/...` and
@@ -459,9 +546,12 @@ export async function handleFal(
   journal: Journal,
 ): Promise<HandleFalOutcome> {
   const targetHost = falTargetHost(req);
-  if (!targetHost) return "passthrough";
+  const isVendorPath =
+    !targetHost && defaults.fal?.vendorPaths === true && !isLegacyFalPath(pathname);
+  const effectiveHost = targetHost ?? (isVendorPath ? FAL_HOSTS.queue : undefined);
+  if (!effectiveHost) return "passthrough";
 
-  const route = classifyRoute(req, pathname, targetHost);
+  const route = classifyRoute(req, pathname, effectiveHost);
   if (!route) return "passthrough";
 
   const testId = getTestId(req);
@@ -474,10 +564,15 @@ export async function handleFal(
         respondNotFound(req, res, pathname, journal, route.requestId!);
         return "handled";
       }
-      advanceJob(job);
+      const reachedTerminal = advanceJob(job);
       writeJson(req, res, 200, statusResponseBody(job), pathname, journal, {
         [FAL_REQUEST_ID_HEADER]: job.requestId,
       });
+      if (reachedTerminal && job.webhookUrl && job.webhookEnabled) {
+        setImmediate(() => {
+          void deliverFalWebhook(job, defaults.logger);
+        });
+      }
       return "handled";
     }
 
@@ -489,12 +584,39 @@ export async function handleFal(
       }
       // Callers may fetch result without first polling status — advance so
       // tests that skip the status check still reach completion.
-      advanceJob(job);
-      // Emit x-fal-request-id on both the in-progress (202) and completed (200)
+      const reachedTerminal = advanceJob(job);
+      // Emit x-fal-request-id on both the in-progress (202/400) and completed (200)
       // result; adapters key their billing lookup off it.
       const resultHeaders: Record<string, string> = { [FAL_REQUEST_ID_HEADER]: job.requestId };
+      if (job.status === "FAILED") {
+        writeJson(
+          req,
+          res,
+          422,
+          {
+            detail: job.errorMessage ?? "Request failed",
+            status: "FAILED",
+            request_id: job.requestId,
+          },
+          pathname,
+          journal,
+          resultHeaders,
+        );
+        if (reachedTerminal && job.webhookUrl && job.webhookEnabled) {
+          setImmediate(() => {
+            void deliverFalWebhook(job, defaults.logger);
+          });
+        }
+        return "handled";
+      }
       if (job.status !== "COMPLETED") {
-        writeJson(req, res, 202, statusResponseBody(job), pathname, journal, resultHeaders);
+        const pendingStatus =
+          defaults.fal?.resultPendingStatus ?? (isVendorPath || job.isVendorPath ? 400 : 202);
+        const body =
+          pendingStatus === 400
+            ? { detail: "Request is still in progress", ...statusResponseBody(job) }
+            : statusResponseBody(job);
+        writeJson(req, res, pendingStatus, body, pathname, journal, resultHeaders);
         return "handled";
       }
       // x-fal-billable-units rides only the completed result, and only when the
@@ -503,6 +625,11 @@ export async function handleFal(
         resultHeaders[FAL_BILLABLE_UNITS_HEADER] = String(job.billableUnits);
       }
       writeJson(req, res, 200, job.result, pathname, journal, resultHeaders);
+      if (reachedTerminal && job.webhookUrl && job.webhookEnabled) {
+        setImmediate(() => {
+          void deliverFalWebhook(job, defaults.logger);
+        });
+      }
       return "handled";
     }
 
@@ -740,6 +867,8 @@ export async function handleFal(
       let payload: unknown;
       if (isJSONResponse(response)) {
         payload = (response as RawJSONResponse).json;
+      } else if (isImageResponse(response)) {
+        payload = imageResponseToFalJson(response);
       } else if (isAudioResponse(response)) {
         payload = audioToFalFile(response);
       } else {
@@ -760,6 +889,25 @@ export async function handleFal(
         return "handled";
       }
 
+      const requestedOutputFormat =
+        typeof parsedBody?.output_format === "string"
+          ? parsedBody.output_format
+          : isJsonObject(parsedBody?.input) && typeof parsedBody.input.output_format === "string"
+            ? parsedBody.input.output_format
+            : undefined;
+      if (
+        requestedOutputFormat === "gif" &&
+        isJsonObject(payload) &&
+        Array.isArray(payload.images)
+      ) {
+        payload = {
+          ...payload,
+          images: payload.images.map((item) =>
+            isJsonObject(item) ? { ...item, content_type: "image/gif" } : item,
+          ),
+        };
+      }
+
       if (route.kind === "sync-run") {
         journal.add({
           method: req.method ?? "POST",
@@ -773,22 +921,52 @@ export async function handleFal(
         return "handled";
       }
 
+      const isAsyncError =
+        isJsonObject(payload) && (typeof payload.error === "string" || payload.status === "ERROR");
+      const errorMessage = isAsyncError
+        ? typeof (payload as Record<string, unknown>).error === "string"
+          ? ((payload as Record<string, unknown>).error as string)
+          : "Request failed"
+        : undefined;
+      const terminalStatus: "COMPLETED" | "FAILED" = isAsyncError ? "FAILED" : "COMPLETED";
+
       const requestId = crypto.randomUUID();
-      const progression = resolveProgression(defaults.falQueue);
+      const progression = resolveProgression({
+        pollsBeforeInProgress:
+          fixture.pollsBeforeInProgress ?? defaults.falQueue?.pollsBeforeInProgress,
+        pollsBeforeCompleted:
+          fixture.pollsBeforeCompleted ?? defaults.falQueue?.pollsBeforeCompleted,
+      });
       const now = Date.now();
       const initialStatus: FalQueueStatus =
-        progression.pollsBeforeCompleted === 0 ? "COMPLETED" : "IN_QUEUE";
+        progression.pollsBeforeCompleted === 0 ? terminalStatus : "IN_QUEUE";
+      const queueModel = isVendorPath ? queueBaseModelId(modelId) : modelId;
+      const queueBaseUrl = isVendorPath
+        ? req.headers.host
+          ? `http://${req.headers.host}/fal/${queueModel}`
+          : `https://${FAL_HOSTS.queue}/${queueModel}`
+        : `https://${FAL_HOSTS.queue}/${queueModel}`;
+      const webhookUrl = extractFalWebhookUrl(req.url, defaults.logger);
+      const webhookEnabled = defaults.fal?.webhook ?? (isVendorPath ? true : false);
+
       const job: FalQueueJob = {
         requestId,
         modelId,
+        queueBaseUrl,
         status: initialStatus,
+        terminalStatus,
         result: payload,
+        ...(errorMessage !== undefined ? { errorMessage } : {}),
+        ...(isVendorPath ? { isVendorPath: true } : {}),
+        ...(webhookUrl !== undefined ? { webhookUrl } : {}),
+        webhookEnabled,
+        webhookSent: false,
         billableUnits: extractBillableUnits(response),
         pollCount: 0,
         pollsBeforeInProgress: progression.pollsBeforeInProgress,
         pollsBeforeCompleted: progression.pollsBeforeCompleted,
         submittedAt: now,
-        completedAt: initialStatus === "COMPLETED" ? now : null,
+        completedAt: progression.pollsBeforeCompleted === 0 ? now : null,
         logs: [
           {
             timestamp: new Date(now).toISOString(),
@@ -801,9 +979,9 @@ export async function handleFal(
       falQueueStates.set(stateKey(requestId), job);
       const envelope = {
         request_id: requestId,
-        response_url: `https://${FAL_HOSTS.queue}/${modelId}/requests/${requestId}`,
-        status_url: `https://${FAL_HOSTS.queue}/${modelId}/requests/${requestId}/status`,
-        cancel_url: `https://${FAL_HOSTS.queue}/${modelId}/requests/${requestId}/cancel`,
+        response_url: `${queueBaseUrl}/requests/${requestId}`,
+        status_url: `${queueBaseUrl}/requests/${requestId}/status`,
+        cancel_url: `${queueBaseUrl}/requests/${requestId}/cancel`,
         queue_position: queuePosition(job),
       };
       journal.add({
@@ -815,6 +993,11 @@ export async function handleFal(
       });
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(envelope));
+      if (progression.pollsBeforeCompleted === 0 && job.webhookUrl && job.webhookEnabled) {
+        setImmediate(() => {
+          void deliverFalWebhook(job, defaults.logger);
+        });
+      }
       return "handled";
     }
   }
@@ -1180,7 +1363,9 @@ async function proxyAndRecordFalQueueSubmit(args: {
   const job: FalQueueJob = {
     requestId: newRequestId,
     modelId,
+    queueBaseUrl: `https://${FAL_HOSTS.queue}/${modelId}`,
     status: initialStatus,
+    terminalStatus: "COMPLETED",
     result: finalBody,
     // Captured from the upstream result's x-fal-billable-units header so the
     // same-session replay (before the persisted fixture is reloaded) already

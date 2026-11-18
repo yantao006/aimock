@@ -951,7 +951,11 @@ export interface AimockConfig {
     // (undocumented)
     auth?: ApiKeyAuthConfig;
     // (undocumented)
+    fal?: FalConfig;
+    // (undocumented)
     host?: string;
+    // (undocumented)
+    kie?: KieConfig;
     // (undocumented)
     llm?: {
         fixtures?: string;
@@ -967,6 +971,9 @@ export interface AimockConfig {
         strictToolArguments?: boolean;
         responsesTools?: ResponsesToolsMode;
         policy?: AimockPolicy;
+        seeapi?: SeeapiConfig;
+        kie?: KieConfig;
+        fal?: FalConfig;
     };
     // (undocumented)
     mcp?: MCPConfig;
@@ -974,6 +981,8 @@ export interface AimockConfig {
     metrics?: boolean;
     // (undocumented)
     port?: number;
+    // (undocumented)
+    seeapi?: SeeapiConfig;
     // (undocumented)
     services?: {
         search?: boolean;
@@ -1034,6 +1043,35 @@ export function applyChaosAsync(res: http$1.ServerResponse, fixture: Fixture | n
 export function assertFakesReport(report: McpFakesReport, opts?: {
     failOnUnfaked?: boolean;
 }): void;
+
+// @public
+export type AsyncImageFixtureOpts = FixtureOpts & {
+    prompt?: string | RegExp;
+    model?: string | RegExp;
+    hasInputImages?: boolean;
+    inputImageCount?: number;
+    sequenceIndex?: number;
+    context?: string;
+    delayMs?: number;
+};
+
+// @public
+export interface AsyncImageResponse {
+    // (undocumented)
+    consumedCredits?: number;
+    // (undocumented)
+    error?: string;
+    // (undocumented)
+    failCode?: string;
+    // (undocumented)
+    image?: ImageItem;
+    // (undocumented)
+    images?: ImageItem[];
+    // (undocumented)
+    status?: "succeeded" | "failed" | "canceled" | "cancelled" | "refunded" | "expired";
+    // (undocumented)
+    urls?: string[];
+}
 
 // @public (undocumented)
 export interface AudioResponse {
@@ -1462,6 +1500,7 @@ export interface ChatCompletionRequest {
     customTools?: CustomToolDefinition[];
     embeddingInput?: string;
     _endpointType?: string;
+    _inputImagesCount?: number;
     // (undocumented)
     max_tokens?: number;
     // (undocumented)
@@ -1818,6 +1857,12 @@ type CutUnits = "text" | "json";
 // @public
 export const DEFAULT_AGUI_RECORD_BUFFER_BYTES: number;
 
+// @public (undocumented)
+export const DEFAULT_SEEAPI_INPUT_FIELDS: readonly string[];
+
+// @public (undocumented)
+export const DEFAULT_SEEAPI_MODELS: readonly SeeapiModelInfo[];
+
 // @public
 export const DEFAULT_TEST_ID = "__default__";
 
@@ -1915,6 +1960,13 @@ export function extractOverrides(response: TextResponse | ToolCallResponse | Con
 // @public (undocumented)
 type FailureRow = McpFakeReportPart["failures"][number];
 
+// @public (undocumented)
+export interface FalConfig {
+    resultPendingStatus?: 202 | 400;
+    vendorPaths?: boolean;
+    webhook?: boolean;
+}
+
 // @public
 interface FalQueueConfig {
     pollsBeforeCompleted?: number;
@@ -1928,6 +1980,10 @@ interface FalQueueJob {
     completedAt: number | null;
     // (undocumented)
     createdAt: number;
+    // (undocumented)
+    errorMessage?: string;
+    // (undocumented)
+    isVendorPath?: boolean;
     logs: Array<{
         timestamp: string;
         level: string;
@@ -1939,6 +1995,8 @@ interface FalQueueJob {
     pollsBeforeCompleted: number;
     pollsBeforeInProgress: number;
     // (undocumented)
+    queueBaseUrl: string;
+    // (undocumented)
     requestId: string;
     // (undocumented)
     result: unknown;
@@ -1946,6 +2004,14 @@ interface FalQueueJob {
     status: FalQueueStatus;
     // (undocumented)
     submittedAt: number;
+    // (undocumented)
+    terminalStatus: "COMPLETED" | "FAILED";
+    // (undocumented)
+    webhookEnabled?: boolean;
+    // (undocumented)
+    webhookSent?: boolean;
+    // (undocumented)
+    webhookUrl?: string;
 }
 
 // @public
@@ -1968,7 +2034,7 @@ export class FalQueueStateMap {
 }
 
 // @public (undocumented)
-type FalQueueStatus = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+type FalQueueStatus = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "CANCELLED";
 
 // @public (undocumented)
 interface FalRecordConfig {
@@ -2139,6 +2205,8 @@ export interface Fixture {
     nonStreamingTiming?: boolean;
     nonStreamingTimingAllProviders?: boolean;
     openRouterProcessing?: boolean;
+    pollsBeforeCompleted?: number;
+    pollsBeforeInProgress?: number;
     // (undocumented)
     recordedTimings?: RecordedTimings;
     // (undocumented)
@@ -2251,7 +2319,9 @@ export interface FixtureFileEntry {
         sequenceIndex?: number;
         turnIndex?: number;
         hasToolResult?: boolean;
-        endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
+        hasInputImages?: boolean;
+        inputImageCount?: number;
+        endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "seeapi" | "kie" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
         context?: string;
     };
     // (undocumented)
@@ -2264,6 +2334,10 @@ export interface FixtureFileEntry {
     nonStreamingTiming?: boolean;
     nonStreamingTimingAllProviders?: boolean;
     openRouterProcessing?: boolean;
+    // (undocumented)
+    pollsBeforeCompleted?: number;
+    // (undocumented)
+    pollsBeforeInProgress?: number;
     // (undocumented)
     recordedTimings?: RecordedTimings;
     // (undocumented)
@@ -2388,12 +2462,15 @@ export interface FixtureMatch {
         dimensions?: unknown;
     };
     // (undocumented)
-    endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
+    endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "seeapi" | "kie" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
+    hasInputImages?: boolean;
     hasToolResult?: boolean;
+    inputImageCount?: number;
     // (undocumented)
     inputText?: string | RegExp;
     // (undocumented)
     model?: string | RegExp;
+    modelOrPrompt?: string | RegExp;
     // (undocumented)
     predicate?: (req: ChatCompletionRequest) => boolean;
     // (undocumented)
@@ -2658,6 +2735,12 @@ export function handleImages(req: http$1.IncomingMessage, res: http$1.ServerResp
 recordProviderKey?: RecordProviderKey): Promise<void>;
 
 // @public (undocumented)
+export function handleKieCreateTask(req: http$1.IncomingMessage, res: http$1.ServerResponse, raw: string, fixtures: Fixture[], journal: Journal, defaults: HandlerDefaults, setCorsHeaders: (res: http$1.ServerResponse) => void, jobs: KieJobMap): Promise<void>;
+
+// @public (undocumented)
+export function handleKieRecordInfo(req: http$1.IncomingMessage, res: http$1.ServerResponse, journal: Journal, defaults: HandlerDefaults, setCorsHeaders: (res: http$1.ServerResponse) => void, jobs: KieJobMap): Promise<void>;
+
+// @public (undocumented)
 export function handleMessages(req: http$1.IncomingMessage, res: http$1.ServerResponse, raw: string, fixtures: Fixture[], journal: Journal, defaults: HandlerDefaults, setCorsHeaders: (res: http$1.ServerResponse) => void): Promise<void>;
 
 // @public (undocumented)
@@ -2691,10 +2774,12 @@ interface HandlerDefaults {
     chaosByTestId?: Map<string, ChaosConfig>;
     // (undocumented)
     chunkSize: number;
+    fal?: FalConfig;
     // (undocumented)
     falQueue?: FalQueueConfig;
     // (undocumented)
     grokVideo?: FalQueueConfig;
+    kie?: KieConfig;
     // (undocumented)
     latency: number;
     // (undocumented)
@@ -2714,6 +2799,7 @@ interface HandlerDefaults {
     // (undocumented)
     requestTransform?: (req: ChatCompletionRequest) => ChatCompletionRequest;
     responsesTools?: ResponsesToolsMode;
+    seeapi?: SeeapiConfig;
     // (undocumented)
     strict?: boolean;
     strictToolArguments?: boolean;
@@ -2735,6 +2821,15 @@ export function handleSearch(req: http$1.IncomingMessage, res: http$1.ServerResp
     logger: Logger;
     strict?: boolean;
 }, setCorsHeaders: (res: http$1.ServerResponse) => void): Promise<void>;
+
+// @public (undocumented)
+export function handleSeeapiCreate(req: http$1.IncomingMessage, res: http$1.ServerResponse, raw: string, fixtures: Fixture[], journal: Journal, defaults: HandlerDefaults, setCorsHeaders: (res: http$1.ServerResponse) => void, jobs: SeeapiJobMap): Promise<void>;
+
+// @public (undocumented)
+export function handleSeeapiModels(req: http$1.IncomingMessage, res: http$1.ServerResponse, journal: Journal, defaults: HandlerDefaults, setCorsHeaders: (res: http$1.ServerResponse) => void): Promise<void>;
+
+// @public (undocumented)
+export function handleSeeapiStatus(req: http$1.IncomingMessage, res: http$1.ServerResponse, id: string, journal: Journal, defaults: HandlerDefaults, setCorsHeaders: (res: http$1.ServerResponse) => void, jobs: SeeapiJobMap): Promise<void>;
 
 // @public (undocumented)
 export function handleSpeech(req: http$1.IncomingMessage, res: http$1.ServerResponse, raw: string, fixtures: Fixture[], journal: Journal, defaults: HandlerDefaults, setCorsHeaders: (res: http$1.ServerResponse) => void): Promise<void>;
@@ -3109,6 +3204,70 @@ export type JsonRpcResponse = {
     };
 };
 
+// @public
+export const KIE_MAX_ENTRIES = 10000;
+
+// @public (undocumented)
+export interface KieConfig extends FalQueueConfig {
+    callbacks?: boolean;
+    requireAuth?: boolean;
+}
+
+// @public (undocumented)
+interface KieJob {
+    // (undocumented)
+    callbacksEnabled: boolean;
+    // (undocumented)
+    callbackSent: boolean;
+    // (undocumented)
+    callBackUrl?: string;
+    // (undocumented)
+    completeTime: number | null;
+    // (undocumented)
+    costTime: number | null;
+    // (undocumented)
+    createTime: number;
+    // (undocumented)
+    failCode: string | null;
+    // (undocumented)
+    failMsg: string | null;
+    // (undocumented)
+    model: string;
+    // (undocumented)
+    pollCount: number;
+    // (undocumented)
+    pollsBeforeCompleted: number;
+    // (undocumented)
+    pollsBeforeInProgress: number;
+    // (undocumented)
+    state: KieTaskState;
+    // (undocumented)
+    taskId: string;
+    // (undocumented)
+    terminalState: "success" | "fail";
+    // (undocumented)
+    urls: string[];
+}
+
+// @public
+export class KieJobMap {
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    delete(key: string): boolean;
+    // (undocumented)
+    get generation(): number;
+    // (undocumented)
+    get(key: string): KieJob | undefined;
+    // (undocumented)
+    set(key: string, job: KieJob): void;
+    // (undocumented)
+    get size(): number;
+}
+
+// @public (undocumented)
+type KieTaskState = "waiting" | "queuing" | "generating" | "success" | "fail";
+
 // @public (undocumented)
 export interface LiveBinding {
     // (undocumented)
@@ -3288,6 +3447,7 @@ export class LLMock {
     onImage(prompt: string | RegExp, response: ImageResponse): this;
     // (undocumented)
     onJsonOutput(pattern: string | RegExp, jsonContent: object | string, opts?: FixtureOpts): this;
+    onKieImage(modelOrPrompt: string | RegExp, response: AsyncImageResponse, opts?: AsyncImageFixtureOpts): this;
     // (undocumented)
     onLive(match: Omit<FixtureMatch, "endpoint">, transcript: LiveTranscript, opts?: FixtureOpts): this;
     // (undocumented)
@@ -3300,6 +3460,7 @@ export class LLMock {
     onRerank(pattern: string | RegExp, results: RerankResult[]): this;
     // (undocumented)
     onSearch(pattern: string | RegExp, results: SearchResult[]): this;
+    onSeeapiImage(modelOrPrompt: string | RegExp, response: AsyncImageResponse, opts?: AsyncImageFixtureOpts): this;
     // (undocumented)
     onSoundEffect(text: string | RegExp, response: AudioResponse): this;
     // (undocumented)
@@ -4316,12 +4477,14 @@ export interface MockServerOptions {
     // (undocumented)
     chunkSize?: number;
     enableMisbehavior?: boolean;
+    fal?: FalConfig;
     falQueue?: FalQueueConfig;
     fixtureCountsMaxTestIds?: number;
     grokVideo?: FalQueueConfig;
     // (undocumented)
     host?: string;
     journalMaxEntries?: number;
+    kie?: KieConfig;
     // (undocumented)
     latency?: number;
     // (undocumented)
@@ -4338,6 +4501,7 @@ export interface MockServerOptions {
     replaySpeed?: number;
     requestTransform?: (req: ChatCompletionRequest) => ChatCompletionRequest;
     responsesTools?: ResponsesToolsMode;
+    seeapi?: SeeapiConfig;
     strict?: boolean;
     strictToolArguments?: boolean;
     veoVideo?: FalQueueConfig;
@@ -4878,6 +5042,92 @@ export interface SearchResult {
     url: string;
 }
 
+// @public
+export const SEEAPI_MAX_ENTRIES = 10000;
+
+// @public (undocumented)
+export interface SeeapiConfig extends FalQueueConfig {
+    allowedInputFieldsByModel?: Record<string, readonly string[]>;
+    defaultAllowedInputFields?: readonly string[];
+    models?: SeeapiModelInfo[];
+    requireAuth?: boolean;
+    strictInputFields?: boolean;
+}
+
+// @public (undocumented)
+interface SeeapiJob {
+    // (undocumented)
+    consumedCredits?: number;
+    // (undocumented)
+    errorMessage?: string;
+    // (undocumented)
+    fixture: Fixture | null;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    model: string;
+    // (undocumented)
+    pollCount: number;
+    // (undocumented)
+    pollsBeforeCompleted: number;
+    // (undocumented)
+    pollsBeforeInProgress: number;
+    // (undocumented)
+    status: SeeapiStatus;
+    // (undocumented)
+    submitReply: SeeapiSubmitReply;
+    // (undocumented)
+    terminalStatus: "succeeded" | SeeapiTerminalFailureStatus;
+    // (undocumented)
+    urls: string[];
+}
+
+// @public
+export class SeeapiJobMap {
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    delete(key: string): boolean;
+    // (undocumented)
+    get generation(): number;
+    // (undocumented)
+    get(key: string): SeeapiJob | undefined;
+    // (undocumented)
+    getIdempotency(key: string): string | undefined;
+    // (undocumented)
+    set(key: string, job: SeeapiJob): void;
+    // (undocumented)
+    setIdempotency(key: string, id: string): void;
+    // (undocumented)
+    get size(): number;
+}
+
+// @public (undocumented)
+export interface SeeapiModelInfo {
+    // (undocumented)
+    endpoints?: string[];
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    provider?: string;
+}
+
+// @public (undocumented)
+type SeeapiStatus = "queued" | "processing" | "succeeded" | SeeapiTerminalFailureStatus;
+
+// @public (undocumented)
+interface SeeapiSubmitReply {
+    // (undocumented)
+    consumed_credits?: number;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    status: "queued" | "processing";
+}
+
+// @public (undocumented)
+type SeeapiTerminalFailureStatus = "failed" | "canceled" | "cancelled" | "refunded" | "expired";
+
 // @public (undocumented)
 interface ServedMisbehaviorToolCall {
     // (undocumented)
@@ -4906,7 +5156,11 @@ export interface ServerInstance {
     // (undocumented)
     journal: Journal;
     // (undocumented)
+    kieJobs: KieJobMap;
+    // (undocumented)
     openRouterVideoJobs: OpenRouterVideoJobMap;
+    // (undocumented)
+    seeapiJobs: SeeapiJobMap;
     // (undocumented)
     server: http$1.Server;
     // (undocumented)

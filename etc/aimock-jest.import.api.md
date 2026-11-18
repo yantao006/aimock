@@ -42,6 +42,35 @@ interface ApiKeyPolicy {
     readonly keys: readonly Buffer[];
 }
 
+// @public
+type AsyncImageFixtureOpts = FixtureOpts & {
+    prompt?: string | RegExp;
+    model?: string | RegExp;
+    hasInputImages?: boolean;
+    inputImageCount?: number;
+    sequenceIndex?: number;
+    context?: string;
+    delayMs?: number;
+};
+
+// @public
+interface AsyncImageResponse {
+    // (undocumented)
+    consumedCredits?: number;
+    // (undocumented)
+    error?: string;
+    // (undocumented)
+    failCode?: string;
+    // (undocumented)
+    image?: ImageItem;
+    // (undocumented)
+    images?: ImageItem[];
+    // (undocumented)
+    status?: "succeeded" | "failed" | "canceled" | "cancelled" | "refunded" | "expired";
+    // (undocumented)
+    urls?: string[];
+}
+
 // @public (undocumented)
 interface AudioResponse {
     // (undocumented)
@@ -81,6 +110,7 @@ interface ChatCompletionRequest {
     customTools?: CustomToolDefinition[];
     embeddingInput?: string;
     _endpointType?: string;
+    _inputImagesCount?: number;
     // (undocumented)
     max_tokens?: number;
     // (undocumented)
@@ -234,6 +264,13 @@ export interface FakesTarget {
     testId: string;
 }
 
+// @public (undocumented)
+interface FalConfig {
+    resultPendingStatus?: 202 | 400;
+    vendorPaths?: boolean;
+    webhook?: boolean;
+}
+
 // @public
 interface FalQueueConfig {
     pollsBeforeCompleted?: number;
@@ -273,6 +310,8 @@ export interface Fixture {
     nonStreamingTiming?: boolean;
     nonStreamingTimingAllProviders?: boolean;
     openRouterProcessing?: boolean;
+    pollsBeforeCompleted?: number;
+    pollsBeforeInProgress?: number;
     // (undocumented)
     recordedTimings?: RecordedTimings;
     // (undocumented)
@@ -379,7 +418,9 @@ interface FixtureFileEntry {
         sequenceIndex?: number;
         turnIndex?: number;
         hasToolResult?: boolean;
-        endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
+        hasInputImages?: boolean;
+        inputImageCount?: number;
+        endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "seeapi" | "kie" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
         context?: string;
     };
     // (undocumented)
@@ -392,6 +433,10 @@ interface FixtureFileEntry {
     nonStreamingTiming?: boolean;
     nonStreamingTimingAllProviders?: boolean;
     openRouterProcessing?: boolean;
+    // (undocumented)
+    pollsBeforeCompleted?: number;
+    // (undocumented)
+    pollsBeforeInProgress?: number;
     // (undocumented)
     recordedTimings?: RecordedTimings;
     // (undocumented)
@@ -467,12 +512,15 @@ interface FixtureMatch {
         dimensions?: unknown;
     };
     // (undocumented)
-    endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
+    endpoint?: "chat" | "image" | "speech" | "transcription" | "translation" | "video" | "embedding" | "audio-gen" | "elevenlabs-tts" | "elevenlabs-voice-design" | "elevenlabs-voice" | "elevenlabs-voice-get" | "elevenlabs-voice-delete" | "elevenlabs-stt" | "elevenlabs-audio-isolation" | "byteplus-tts" | "fal-audio" | "fal" | "seeapi" | "kie" | "realtime" | "realtime-transcription" | "realtime-translation" | "openai-live";
+    hasInputImages?: boolean;
     hasToolResult?: boolean;
+    inputImageCount?: number;
     // (undocumented)
     inputText?: string | RegExp;
     // (undocumented)
     model?: string | RegExp;
+    modelOrPrompt?: string | RegExp;
     // (undocumented)
     predicate?: (req: ChatCompletionRequest) => boolean;
     // (undocumented)
@@ -614,6 +662,12 @@ interface JournalOptions {
     fixtureCountsMaxTestIds?: number;
     maxEntries?: number;
     onAdd?: (entry: JournalEntry) => void;
+}
+
+// @public (undocumented)
+interface KieConfig extends FalQueueConfig {
+    callbacks?: boolean;
+    requireAuth?: boolean;
 }
 
 // @public (undocumented)
@@ -792,6 +846,7 @@ export class LLMock {
     onImage(prompt: string | RegExp, response: ImageResponse): this;
     // (undocumented)
     onJsonOutput(pattern: string | RegExp, jsonContent: object | string, opts?: FixtureOpts): this;
+    onKieImage(modelOrPrompt: string | RegExp, response: AsyncImageResponse, opts?: AsyncImageFixtureOpts): this;
     // (undocumented)
     onLive(match: Omit<FixtureMatch, "endpoint">, transcript: LiveTranscript, opts?: FixtureOpts): this;
     // (undocumented)
@@ -804,6 +859,7 @@ export class LLMock {
     onRerank(pattern: string | RegExp, results: RerankResult[]): this;
     // (undocumented)
     onSearch(pattern: string | RegExp, results: SearchResult[]): this;
+    onSeeapiImage(modelOrPrompt: string | RegExp, response: AsyncImageResponse, opts?: AsyncImageFixtureOpts): this;
     // (undocumented)
     onSoundEffect(text: string | RegExp, response: AudioResponse): this;
     // (undocumented)
@@ -1089,12 +1145,14 @@ export interface MockServerOptions {
     // (undocumented)
     chunkSize?: number;
     enableMisbehavior?: boolean;
+    fal?: FalConfig;
     falQueue?: FalQueueConfig;
     fixtureCountsMaxTestIds?: number;
     grokVideo?: FalQueueConfig;
     // (undocumented)
     host?: string;
     journalMaxEntries?: number;
+    kie?: KieConfig;
     // (undocumented)
     latency?: number;
     // (undocumented)
@@ -1111,6 +1169,7 @@ export interface MockServerOptions {
     replaySpeed?: number;
     requestTransform?: (req: ChatCompletionRequest) => ChatCompletionRequest;
     responsesTools?: ResponsesToolsMode;
+    seeapi?: SeeapiConfig;
     strict?: boolean;
     strictToolArguments?: boolean;
     veoVideo?: FalQueueConfig;
@@ -1300,6 +1359,25 @@ interface SearchResult {
     title: string;
     // (undocumented)
     url: string;
+}
+
+// @public (undocumented)
+interface SeeapiConfig extends FalQueueConfig {
+    allowedInputFieldsByModel?: Record<string, readonly string[]>;
+    defaultAllowedInputFields?: readonly string[];
+    models?: SeeapiModelInfo[];
+    requireAuth?: boolean;
+    strictInputFields?: boolean;
+}
+
+// @public (undocumented)
+interface SeeapiModelInfo {
+    // (undocumented)
+    endpoints?: string[];
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    provider?: string;
 }
 
 // @public (undocumented)
