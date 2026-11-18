@@ -2,6 +2,8 @@ import type { LiveTranscript } from "./live-types.js";
 import { normalizeLiveFixture, normalizeLiveOptions } from "./live-fixture.js";
 import { isLiveResponse, markServerOwnedFixtures } from "./helpers.js";
 import type {
+  AsyncImageFixtureOpts,
+  AsyncImageResponse,
   AudioResponse,
   ChaosConfig,
   EmbeddingFixtureOpts,
@@ -59,6 +61,7 @@ import type { SearchFixture, SearchResult } from "./search.js";
 import type { RerankFixture, RerankResult } from "./rerank.js";
 import type { ModerationFixture, ModerationResult } from "./moderation.js";
 import { imageResponseToFalJson, videoResponseToFalJson } from "./fal.js";
+import { asyncImageResponseToJson } from "./seeapi.js";
 import { voiceDesignToJson } from "./elevenlabs-voice.js";
 import { Logger } from "./logger.js";
 import { parsePolicy } from "./response/policy.js";
@@ -540,6 +543,72 @@ export class LLMock {
    */
   onFalVideo(modelOrPrompt: string | RegExp, response: VideoResponse, opts?: FalQueueOpts): this {
     return this.onFalQueue(modelOrPrompt, videoResponseToFalJson(response), opts);
+  }
+
+  private registerAsyncImageFixture(
+    endpoint: "seeapi" | "kie",
+    modelOrPrompt: string | RegExp,
+    response: AsyncImageResponse,
+    opts?: AsyncImageFixtureOpts,
+  ): this {
+    const {
+      prompt,
+      model,
+      hasInputImages,
+      inputImageCount,
+      sequenceIndex,
+      context,
+      delayMs,
+      latency,
+      ...fixtureOpts
+    } = opts ?? {};
+    const match: FixtureMatch = {
+      endpoint,
+      ...(hasInputImages !== undefined ? { hasInputImages } : {}),
+      ...(inputImageCount !== undefined ? { inputImageCount } : {}),
+      ...(sequenceIndex !== undefined ? { sequenceIndex } : {}),
+      ...(context !== undefined ? { context } : {}),
+    };
+    if (prompt !== undefined || model !== undefined) {
+      match.model = model ?? modelOrPrompt;
+      if (prompt !== undefined) match.userMessage = prompt;
+      else if (model !== undefined) match.userMessage = modelOrPrompt;
+    } else {
+      match.modelOrPrompt = modelOrPrompt;
+    }
+    const effectiveLatency = latency ?? delayMs;
+    return this.addFixture(
+      this.own({
+        match,
+        response: asyncImageResponseToJson(response),
+        ...(effectiveLatency !== undefined ? { latency: effectiveLatency } : {}),
+        ...fixtureOpts,
+      }),
+    );
+  }
+
+  /**
+   * Register a SeeAPI async image fixture (`/seeapi/v1/generations`).
+   * Matches on `model` or prompt by default, or explicitly via `opts.model` / `opts.prompt`.
+   */
+  onSeeapiImage(
+    modelOrPrompt: string | RegExp,
+    response: AsyncImageResponse,
+    opts?: AsyncImageFixtureOpts,
+  ): this {
+    return this.registerAsyncImageFixture("seeapi", modelOrPrompt, response, opts);
+  }
+
+  /**
+   * Register a KIE async image fixture (`/kie/api/v1/jobs/createTask`).
+   * Matches on `model` or prompt by default, or explicitly via `opts.model` / `opts.prompt`.
+   */
+  onKieImage(
+    modelOrPrompt: string | RegExp,
+    response: AsyncImageResponse,
+    opts?: AsyncImageFixtureOpts,
+  ): this {
+    return this.registerAsyncImageFixture("kie", modelOrPrompt, response, opts);
   }
 
   // ---- Service mock convenience methods ----

@@ -191,6 +191,13 @@ import {
 import { handleAudioPipeline, AUDIO_PIPELINE_MAX_BODY_BYTES } from "./audio-pipeline.js";
 import { handleFalQueue, falJobs } from "./fal-audio.js";
 import { handleFal, falQueueStates, falWillHandle } from "./fal.js";
+import {
+  handleSeeapiCreate,
+  handleSeeapiModels,
+  handleSeeapiStatus,
+  SeeapiJobMap,
+} from "./seeapi.js";
+import { handleKieCreateTask, handleKieRecordInfo, KieJobMap } from "./kie.js";
 import { handleOllama, handleOllamaGenerate, handleOllamaEmbeddings } from "./ollama.js";
 import { handleCohere, handleCohereEmbed } from "./cohere.js";
 import { handleSearch, type SearchFixture } from "./search.js";
@@ -304,6 +311,11 @@ import {
   ELEVENLABS_STT_PATH,
   ELEVENLABS_AUDIO_ISOLATION_PATH,
   BYTEPLUS_TTS_PATH,
+  SEEAPI_GENERATIONS_PATH,
+  SEEAPI_GENERATION_ID_RE,
+  SEEAPI_MODELS_PATH,
+  KIE_CREATE_TASK_PATH,
+  KIE_RECORD_INFO_PATH,
   FAL_QUEUE_SUBMIT_RE,
   FAL_QUEUE_REQUESTS_RE,
   FAL_RUN_RE,
@@ -396,6 +408,8 @@ export interface ServerInstance {
   veoVideoJobs: VeoVideoJobMap;
   grokVideoJobs: GrokVideoJobMap;
   bytePlusVideoJobs: BytePlusVideoJobMap;
+  seeapiJobs: SeeapiJobMap;
+  kieJobs: KieJobMap;
 }
 
 const DEFAULT_CHUNK_SIZE = 20;
@@ -519,6 +533,8 @@ export interface FullResetTargets {
   veoVideoJobs: VeoVideoJobMap;
   grokVideoJobs: GrokVideoJobMap;
   bytePlusVideoJobs: BytePlusVideoJobMap;
+  seeapiJobs: SeeapiJobMap;
+  kieJobs: KieJobMap;
   defaults: HandlerDefaults;
   /**
    * The server's mounts. A full reset unloads every MCP fake on them (R1, R2);
@@ -575,6 +591,8 @@ export function performFullReset(fixtures: Fixture[], targets: FullResetTargets 
   targets.veoVideoJobs.clear();
   targets.grokVideoJobs.clear();
   targets.bytePlusVideoJobs.clear();
+  targets.seeapiJobs.clear();
+  targets.kieJobs.clear();
   for (const { handler } of targets.mounts ?? []) handler.clearMcpFakes?.();
   if (targets.defaults.registry) {
     targets.defaults.registry.setGauge("aimock_fixtures_loaded", {}, fixtures.length);
@@ -907,6 +925,8 @@ async function handleControlAPI(
   veoVideoJobs: VeoVideoJobMap,
   grokVideoJobs: GrokVideoJobMap,
   bytePlusVideoJobs: BytePlusVideoJobMap,
+  seeapiJobs: SeeapiJobMap,
+  kieJobs: KieJobMap,
   defaults: HandlerDefaults,
   mounts: MountList,
 ): Promise<boolean> {
@@ -1458,6 +1478,8 @@ async function handleControlAPI(
     veoVideoJobs,
     grokVideoJobs,
     bytePlusVideoJobs,
+    seeapiJobs,
+    kieJobs,
     defaults,
     mounts,
   });
@@ -3149,6 +3171,15 @@ async function startServer(
     get bytePlusVideo() {
       return serverOptions.bytePlusVideo;
     },
+    get seeapi() {
+      return serverOptions.seeapi;
+    },
+    get kie() {
+      return serverOptions.kie;
+    },
+    get fal() {
+      return serverOptions.fal;
+    },
   };
 
   // Validate chaos defaults through the ONE chaos table, so what startup warns
@@ -3178,6 +3209,8 @@ async function startServer(
     { name: "veoVideo", config: options?.veoVideo },
     { name: "grokVideo", config: options?.grokVideo },
     { name: "bytePlusVideo", config: options?.bytePlusVideo },
+    { name: "seeapi", config: options?.seeapi },
+    { name: "kie", config: options?.kie },
   ]) {
     if (!config) continue;
     for (const field of ["pollsBeforeInProgress", "pollsBeforeCompleted"] as const) {
@@ -3279,6 +3312,8 @@ async function startServer(
   const veoVideoJobs = new VeoVideoJobMap();
   const grokVideoJobs = new GrokVideoJobMap();
   const bytePlusVideoJobs = new BytePlusVideoJobMap();
+  const seeapiJobs = new SeeapiJobMap();
+  const kieJobs = new KieJobMap();
 
   /**
    * The OpenAI error `type` that goes with a status: 4xx is the caller's
@@ -3776,6 +3811,8 @@ async function startServer(
         veoVideoJobs,
         grokVideoJobs,
         bytePlusVideoJobs,
+        seeapiJobs,
+        kieJobs,
         defaults,
         mountList,
       );
@@ -5400,36 +5437,107 @@ async function startServer(
       return;
     }
 
+    // POST /seeapi/v1/generations — SeeAPI async image generation submit
+    if (pathname === SEEAPI_GENERATIONS_PATH && req.method === "POST") {
+      setCorsHeaders(res);
+      try {
+        const raw = await readBody(req);
+        ensureRawFixturePositions();
+        await handleSeeapiCreate(
+          req,
+          res,
+          raw,
+          fixtures,
+          journal,
+          defaults,
+          setCorsHeaders,
+          seeapiJobs,
+        );
+      } catch (err: unknown) {
+        routeError(req, res, err, pathname, { service: "seeapi" });
+      }
+      return;
+    }
+
+    // GET /seeapi/v1/models — SeeAPI model catalog
+    if (pathname === SEEAPI_MODELS_PATH && req.method === "GET") {
+      setCorsHeaders(res);
+      try {
+        await handleSeeapiModels(req, res, journal, defaults, setCorsHeaders);
+      } catch (err: unknown) {
+        routeError(req, res, err, pathname, { service: "seeapi" });
+      }
+      return;
+    }
+
+    // GET /seeapi/v1/generations/{id} — SeeAPI generation status poll
+    const seeapiStatusMatch = pathname.match(SEEAPI_GENERATION_ID_RE);
+    if (seeapiStatusMatch && req.method === "GET") {
+      setCorsHeaders(res);
+      try {
+        await handleSeeapiStatus(
+          req,
+          res,
+          seeapiStatusMatch[1],
+          journal,
+          defaults,
+          setCorsHeaders,
+          seeapiJobs,
+        );
+      } catch (err: unknown) {
+        routeError(req, res, err, pathname, { service: "seeapi" });
+      }
+      return;
+    }
+
+    // POST /kie/api/v1/jobs/createTask — KIE image task submit
+    if (pathname === KIE_CREATE_TASK_PATH && req.method === "POST") {
+      setCorsHeaders(res);
+      try {
+        const raw = await readBody(req);
+        ensureRawFixturePositions();
+        await handleKieCreateTask(
+          req,
+          res,
+          raw,
+          fixtures,
+          journal,
+          defaults,
+          setCorsHeaders,
+          kieJobs,
+        );
+      } catch (err: unknown) {
+        routeError(req, res, err, pathname, { service: "kie" });
+      }
+      return;
+    }
+
+    // GET /kie/api/v1/jobs/recordInfo — KIE task status poll
+    if (pathname === KIE_RECORD_INFO_PATH && req.method === "GET") {
+      setCorsHeaders(res);
+      try {
+        await handleKieRecordInfo(req, res, journal, defaults, setCorsHeaders, kieJobs);
+      } catch (err: unknown) {
+        routeError(req, res, err, pathname, { service: "kie" });
+      }
+      return;
+    }
+
     // Body read by the general fal handler; preserved so legacy fal-audio
     // routes below don't double-consume the stream on passthrough.
     let falBody: string | undefined;
 
-    // /fal/* with `x-fal-target-host` header — general fal.ai routing
-    // (queue.fal.run, fal.run, rest.fal.ai, rest.alpha.fal.ai).
-    // Matches the requestMiddleware path-mirror convention used by
-    // @fal-ai/client when proxyUrl can't be honoured server-side.
-    if (FAL_ROUTE_RE.test(pathname) && req.headers["x-fal-target-host"]) {
+    // /fal/* with `x-fal-target-host` header (or opt-in `fal.vendorPaths`) —
+    // general fal.ai routing (queue.fal.run, fal.run, rest.fal.ai, rest.alpha.fal.ai).
+    if (
+      FAL_ROUTE_RE.test(pathname) &&
+      (req.headers["x-fal-target-host"] || defaults.fal?.vendorPaths)
+    ) {
       setCorsHeaders(res);
       try {
         falBody = req.method === "POST" || req.method === "PUT" ? await readBody(req) : "";
         const raw = falBody;
-        // Chaos is rolled EXACTLY ONCE per fal request. This gate owns the roll
-        // only when the general handler is actually going to own the request;
-        // if `handleFal` would return "passthrough" the request continues to
-        // the legacy `/fal/queue/...` / `/fal/run/...` routes below, and THEIR
-        // `applyChaosAsync` (or the queue-requests gate) is the single roll.
-        // Rolling here unconditionally would double-roll every passthrough
-        // (observed: 0.72 effective drop rate for a configured 0.5).
-        //
-        // The deterministic latency is awaited BEFORE the roll, so a configured
-        // delay applies to every outcome on this path — served state, proxied
-        // response and each chaos failure alike — exactly as the completions
-        // path does, and resolved from the same per-testId scope as the rates.
-        //
-        // `source` is "internal": the roll happens before any fixture match or
-        // upstream call, so nothing was going to serve this but aimock's own
-        // fal logic. Mirrors the veo/grok/openrouter lifecycle gates.
-        if (falWillHandle(req, pathname)) {
+        if (falWillHandle(req, pathname, defaults.fal)) {
           // Resolved ONCE and threaded into both the latency await and the
           // action roll — re-resolving would re-parse the chaos headers and
           // warn twice per request. `res` is passed so a client that hangs up
@@ -5956,6 +6064,8 @@ async function startServer(
     veoVideoJobs.clear();
     grokVideoJobs.clear();
     bytePlusVideoJobs.clear();
+    seeapiJobs.clear();
+    kieJobs.clear();
     originalClose(callback);
     return this;
   } as typeof server.close;
@@ -5993,6 +6103,8 @@ async function startServer(
         veoVideoJobs,
         grokVideoJobs,
         bytePlusVideoJobs,
+        seeapiJobs,
+        kieJobs,
       });
     });
   });

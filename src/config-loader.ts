@@ -10,12 +10,15 @@ import type {
   AimockPolicy,
   ApiKeyAuthConfig,
   ChaosConfig,
+  FalConfig,
+  KieConfig,
   McpRecordConfig,
   MisbehaviorConfig,
   MisbehaviorFaultId,
   Mountable,
   RecordConfig,
   ResponsesToolsMode,
+  SeeapiConfig,
 } from "./types.js";
 import { parseMisbehavior } from "./misbehavior.js";
 import type { MCPToolDefinition, MCPPromptDefinition } from "./mcp-types.js";
@@ -147,7 +150,16 @@ export interface AimockConfig {
     responsesTools?: ResponsesToolsMode;
     /** See `MockServerOptions.policy`. Independent of `strict`. */
     policy?: AimockPolicy;
+    /** SeeAPI config (also accepted at top-level `config.seeapi`). */
+    seeapi?: SeeapiConfig;
+    /** KIE config (also accepted at top-level `config.kie`). */
+    kie?: KieConfig;
+    /** fal compatibility config (also accepted at top-level `config.fal`). */
+    fal?: FalConfig;
   };
+  seeapi?: SeeapiConfig;
+  kie?: KieConfig;
+  fal?: FalConfig;
   mcp?: MCPConfig;
   a2a?: A2AConfig;
   agui?: AGUIConfig;
@@ -325,6 +337,15 @@ export async function startFromConfig(
       strictToolArguments: overrides?.strictToolArguments ?? configStrictToolArguments,
       responsesTools: overrides?.responsesTools ?? responsesTools,
       policy,
+      ...(config.seeapi !== undefined || config.llm?.seeapi !== undefined
+        ? { seeapi: { ...config.llm?.seeapi, ...config.seeapi } }
+        : {}),
+      ...(config.kie !== undefined || config.llm?.kie !== undefined
+        ? { kie: { ...config.llm?.kie, ...config.kie } }
+        : {}),
+      ...(config.fal !== undefined || config.llm?.fal !== undefined
+        ? { fal: { ...config.llm?.fal, ...config.fal } }
+        : {}),
     },
     resolvedAuth,
   );

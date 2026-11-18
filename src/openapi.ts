@@ -1587,6 +1587,132 @@ const COMPONENTS: Record<string, unknown> = {
     type: "object",
     description: "Model-dependent queue input, matched against fixtures.",
   },
+  SeeapiGenerationSubmitRequest: {
+    type: "object",
+    required: ["model", "input"],
+    properties: {
+      model: { type: "string" },
+      endpoint: { type: "string", enum: ["text-to-image", "image-to-image"] },
+      provider: { type: "string" },
+      input: {
+        type: "object",
+        properties: {
+          prompt: { type: "string" },
+          input_images: { type: "array", items: { type: "string" } },
+          aspect_ratio: { type: "string" },
+          resolution: { type: "string" },
+          output_format: { type: "string" },
+        },
+      },
+    },
+  },
+  SeeapiGenerationEnvelope: {
+    type: "object",
+    required: ["generation"],
+    properties: {
+      generation: {
+        type: "object",
+        required: ["id", "status"],
+        properties: {
+          id: { type: "string" },
+          status: {
+            type: "string",
+            enum: [
+              "queued",
+              "processing",
+              "succeeded",
+              "failed",
+              "canceled",
+              "cancelled",
+              "refunded",
+              "expired",
+            ],
+          },
+          consumed_credits: { type: "number" },
+          result: {
+            type: "object",
+            properties: {
+              assets: {
+                type: "array",
+                items: { type: "object", properties: { url: { type: "string" } } },
+              },
+            },
+          },
+          error_message: { type: "string" },
+        },
+      },
+    },
+  },
+  SeeapiModelsResponse: {
+    type: "object",
+    required: ["models"],
+    properties: {
+      models: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            provider: { type: "string" },
+            endpoints: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+    },
+  },
+  KieCreateTaskRequest: {
+    type: "object",
+    required: ["model", "input"],
+    properties: {
+      model: { type: "string" },
+      input: {
+        type: "object",
+        properties: {
+          prompt: { type: "string" },
+          image_input: { type: "array", items: { type: "string" } },
+          aspect_ratio: { type: "string" },
+          resolution: { type: "string" },
+        },
+      },
+      callBackUrl: { type: "string" },
+    },
+  },
+  KieCreateTaskResponse: {
+    type: "object",
+    required: ["code", "msg", "data"],
+    properties: {
+      code: { type: "integer" },
+      msg: { type: "string" },
+      data: {
+        type: "object",
+        required: ["taskId"],
+        properties: { taskId: { type: "string" } },
+      },
+    },
+  },
+  KieRecordInfoResponse: {
+    type: "object",
+    required: ["code", "msg", "data"],
+    properties: {
+      code: { type: "integer" },
+      msg: { type: "string" },
+      data: {
+        type: "object",
+        required: ["taskId", "state"],
+        properties: {
+          taskId: { type: "string" },
+          model: { type: "string" },
+          state: { type: "string", enum: ["waiting", "queuing", "generating", "success", "fail"] },
+          resultJson: { type: "string" },
+          failCode: { type: ["string", "null"] },
+          failMsg: { type: ["string", "null"] },
+          costTime: { type: ["number", "null"] },
+          createTime: { type: "integer" },
+          completeTime: { type: ["integer", "null"] },
+        },
+      },
+    },
+  },
   FileUploadRequest: {
     type: "object",
     required: ["file"],
@@ -2850,6 +2976,26 @@ const SCHEMA_REFS: Record<string, OperationSchemas> = {
   },
   // BytePlus Seed Speech
   "POST /api/v3/tts/create": { request: "SeedSpeechRequest", response: "SeedSpeechResponse" },
+  // SeeAPI
+  "POST /seeapi/v1/generations": {
+    request: "SeeapiGenerationSubmitRequest",
+    response: "SeeapiGenerationEnvelope",
+    successStatus: "202",
+    successDescription: "SeeAPI generation enqueued.",
+  },
+  "GET /seeapi/v1/generations/{id}": { response: "SeeapiGenerationEnvelope" },
+  "GET /seeapi/v1/models": { response: "SeeapiModelsResponse" },
+  // KIE
+  "POST /kie/api/v1/jobs/createTask": {
+    request: "KieCreateTaskRequest",
+    response: "KieCreateTaskResponse",
+  },
+  "GET /kie/api/v1/jobs/recordInfo": {
+    response: "KieRecordInfoResponse",
+    query: [
+      { name: "taskId", description: "KIE task ID", required: true, schema: { type: "string" } },
+    ],
+  },
   // fal.ai
   "POST /fal/queue/submit/{model}": {
     request: "FalQueueSubmitRequest",

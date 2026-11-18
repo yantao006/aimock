@@ -37,6 +37,8 @@ import { CHAOS_FIELDS, CHAOS_FIELD_NAMES, parseChaosField } from "./chaos.js";
 import { Message, build, fixed, jsonText, msg, quote, within } from "./message-text.js";
 import { MCP_FAKES_ECHO_LIMIT } from "./constants.js";
 import { getUsageFieldDefinition } from "./response/usage/fields.js";
+import { asyncImageResponseToJson } from "./seeapi.js";
+import type { AsyncImageResponse } from "./types.js";
 import {
   copyFixtureMisbehaviorPosition,
   parseMisbehavior,
@@ -132,6 +134,15 @@ export function normalizeResponsesToolsKeys(response: Record<string, unknown>): 
 
 class InvalidFixtureMatchError extends TypeError {}
 
+function isAsyncImageShortcut(raw: unknown): raw is AsyncImageResponse {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const obj = raw as Record<string, unknown>;
+  if ("json" in obj || "raw" in obj || "live" in obj || "content" in obj) return false;
+  if ("urls" in obj && Array.isArray(obj.urls)) return true;
+  if (typeof obj.error === "string") return true;
+  return false;
+}
+
 export function entryToFixture(
   entry: FixtureFileEntry,
   logger?: Logger,
@@ -168,13 +179,28 @@ export function entryToFixture(
       ...(entry.match.hasToolResult !== undefined && {
         hasToolResult: entry.match.hasToolResult,
       }),
+      ...(entry.match.hasInputImages !== undefined && {
+        hasInputImages: entry.match.hasInputImages,
+      }),
+      ...(entry.match.inputImageCount !== undefined && {
+        inputImageCount: entry.match.inputImageCount,
+      }),
       ...(entry.match.context !== undefined && { context: entry.match.context }),
     },
     response:
       entry.match.endpoint === "openai-live"
         ? normalizeLiveFixture(entry.response, liveOptions)
-        : normalizeResponse(entry.response, liveOptions),
+        : (entry.match.endpoint === "seeapi" || entry.match.endpoint === "kie") &&
+            isAsyncImageShortcut(entry.response)
+          ? asyncImageResponseToJson(entry.response)
+          : normalizeResponse(entry.response, liveOptions),
     ...(entry.latency !== undefined && { latency: entry.latency }),
+    ...(entry.pollsBeforeInProgress !== undefined && {
+      pollsBeforeInProgress: entry.pollsBeforeInProgress,
+    }),
+    ...(entry.pollsBeforeCompleted !== undefined && {
+      pollsBeforeCompleted: entry.pollsBeforeCompleted,
+    }),
     ...(entry.chunkSize !== undefined && { chunkSize: entry.chunkSize }),
     ...(entry.truncateAfterChunks !== undefined && {
       truncateAfterChunks: entry.truncateAfterChunks,
@@ -1036,6 +1062,8 @@ function isErrorEndpointCompatible(req: ChatCompletionRequest): boolean {
     reqEndpoint === "embedding" ||
     reqEndpoint.startsWith("realtime") ||
     reqEndpoint === "fal" ||
+    reqEndpoint === "seeapi" ||
+    reqEndpoint === "kie" ||
     reqEndpoint === "elevenlabs-voice-design" ||
     reqEndpoint === "elevenlabs-voice" ||
     reqEndpoint === "elevenlabs-voice-get" ||
@@ -1883,6 +1911,11 @@ export function validateFixtures(
               m.turnIndex,
               m.hasToolResult,
               // Appended only when set, so every key without it is unchanged.
+              ...(m.hasInputImages !== undefined ? [`hasInputImages=${m.hasInputImages}`] : []),
+              ...(m.inputImageCount !== undefined ? [`inputImageCount=${m.inputImageCount}`] : []),
+              ...(m.modelOrPrompt !== undefined
+                ? [`modelOrPrompt=${serializeMatcher(m.modelOrPrompt)}`]
+                : []),
               ...(m.toolNamespace !== undefined ? [`toolNamespace=${m.toolNamespace}`] : []),
               ...(m.embeddingRequest !== undefined ? [JSON.stringify(m.embeddingRequest)] : []),
             ]
@@ -1921,10 +1954,13 @@ export function validateFixtures(
       match.toolName !== undefined ||
       match.toolNamespace !== undefined ||
       match.model !== undefined ||
+      match.modelOrPrompt !== undefined ||
       match.predicate !== undefined ||
       match.turnIndex !== undefined ||
       match.sequenceIndex !== undefined ||
-      match.hasToolResult !== undefined;
+      match.hasToolResult !== undefined ||
+      match.hasInputImages !== undefined ||
+      match.inputImageCount !== undefined;
 
     if (!hasDiscriminator && i < fixtures.length - 1) {
       const ref: ValidationRef = {

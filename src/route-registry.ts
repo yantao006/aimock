@@ -80,6 +80,11 @@ export const ELEVENLABS_VOICE_RE = /^\/v1\/voices\/([^/]+)$/;
 export const ELEVENLABS_STT_PATH = "/v1/speech-to-text";
 export const ELEVENLABS_AUDIO_ISOLATION_PATH = "/v1/audio-isolation";
 export const BYTEPLUS_TTS_PATH = "/api/v3/tts/create";
+export const SEEAPI_GENERATIONS_PATH = "/seeapi/v1/generations";
+export const SEEAPI_GENERATION_ID_RE = /^\/seeapi\/v1\/generations\/([^/]+)$/;
+export const SEEAPI_MODELS_PATH = "/seeapi/v1/models";
+export const KIE_CREATE_TASK_PATH = "/kie/api/v1/jobs/createTask";
+export const KIE_RECORD_INFO_PATH = "/kie/api/v1/jobs/recordInfo";
 export const FAL_QUEUE_SUBMIT_RE = /^\/fal\/queue\/submit\/(.+)$/;
 export const FAL_QUEUE_REQUESTS_RE = /^\/fal\/queue\/requests\/(.+)$/;
 export const FAL_RUN_RE = /^\/fal\/run\/(.+)$/;
@@ -561,6 +566,39 @@ export const ROUTE_DEFINITIONS: RouteDefinition[] = [
     path: BYTEPLUS_TTS_PATH,
     service: "byteplus",
     description: "BytePlus Seed Speech text-to-speech",
+  },
+  // SeeAPI
+  {
+    method: "POST",
+    path: SEEAPI_GENERATIONS_PATH,
+    service: "seeapi",
+    description: "SeeAPI image generation submit",
+  },
+  {
+    method: "GET",
+    path: "/seeapi/v1/generations/{id}",
+    examplePath: "/seeapi/v1/generations/gen-test-id",
+    service: "seeapi",
+    description: "SeeAPI generation status poll",
+  },
+  {
+    method: "GET",
+    path: SEEAPI_MODELS_PATH,
+    service: "seeapi",
+    description: "SeeAPI model catalog",
+  },
+  // KIE
+  {
+    method: "POST",
+    path: KIE_CREATE_TASK_PATH,
+    service: "kie",
+    description: "KIE image task submit",
+  },
+  {
+    method: "GET",
+    path: KIE_RECORD_INFO_PATH,
+    service: "kie",
+    description: "KIE image task status poll",
   },
   // fal.ai
   {

@@ -25,6 +25,7 @@ import {
   OPENAI_VIDEO_STATUS_RE,
   OPENROUTER_VIDEO_CONTENT_RE,
   OPENROUTER_VIDEO_STATUS_RE,
+  SEEAPI_GENERATION_ID_RE,
   VEO_OPERATION_RE,
   VEO_PREDICT_LRO_RE,
   VECTOR_STORES_BATCH_CANCEL_RE,
@@ -53,6 +54,7 @@ export {
   OPENAI_VIDEO_STATUS_RE,
   OPENROUTER_VIDEO_CONTENT_RE,
   OPENROUTER_VIDEO_STATUS_RE,
+  SEEAPI_GENERATION_ID_RE,
   VEO_OPERATION_RE,
   VEO_PREDICT_LRO_RE,
   VECTOR_STORES_BATCH_CANCEL_RE,
@@ -412,6 +414,10 @@ const STATIC_ROUTE_PATHS = new Set([
   "/api/v1/credits",
   "/api/v1/key",
   "/api/v1/models",
+  "/seeapi/v1/generations",
+  "/seeapi/v1/models",
+  "/kie/api/v1/jobs/createTask",
+  "/kie/api/v1/jobs/recordInfo",
   "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
 ]);
 
@@ -610,6 +616,10 @@ export function normalizePathLabel(pathname: string, mountPaths: readonly string
   }
   if (BYTEPLUS_VIDEO_SUBMIT_RE.test(pathname)) {
     return "/contents/generations/tasks";
+  }
+
+  if (SEEAPI_GENERATION_ID_RE.test(pathname)) {
+    return "/seeapi/v1/generations/{id}";
   }
 
   if (BATCHES_CANCEL_RE.test(pathname)) {

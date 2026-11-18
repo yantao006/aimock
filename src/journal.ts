@@ -115,11 +115,14 @@ function matchCriteriaEqual(a: FixtureMatch, b: FixtureMatch): boolean {
     fieldEqual(a.toolName, b.toolName) &&
     fieldEqual(a.toolNamespace, b.toolNamespace) &&
     fieldEqual(a.model, b.model) &&
+    fieldEqual(a.modelOrPrompt, b.modelOrPrompt) &&
     fieldEqual(a.responseFormat, b.responseFormat) &&
     fieldEqual(a.predicate, b.predicate) &&
     fieldEqual(a.endpoint, b.endpoint) &&
     fieldEqual(a.turnIndex, b.turnIndex) &&
     fieldEqual(a.hasToolResult, b.hasToolResult) &&
+    fieldEqual(a.hasInputImages, b.hasInputImages) &&
+    fieldEqual(a.inputImageCount, b.inputImageCount) &&
     fieldEqual(a.toolResultContains, b.toolResultContains) &&
     fieldEqual(a.context, b.context)
   );

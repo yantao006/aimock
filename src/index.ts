@@ -207,6 +207,16 @@ export {
 } from "./elevenlabs-voice.js";
 export { handleFalQueue } from "./fal-audio.js";
 export { handleFal, FalQueueStateMap } from "./fal.js";
+export {
+  handleSeeapiCreate,
+  handleSeeapiStatus,
+  handleSeeapiModels,
+  SeeapiJobMap,
+  SEEAPI_MAX_ENTRIES,
+  DEFAULT_SEEAPI_INPUT_FIELDS,
+  DEFAULT_SEEAPI_MODELS,
+} from "./seeapi.js";
+export { handleKieCreateTask, handleKieRecordInfo, KieJobMap, KIE_MAX_ENTRIES } from "./kie.js";
 
 // Helpers
 export {
@@ -534,6 +544,12 @@ export type {
   StreamingProfile,
   FixtureOpts,
   EmbeddingFixtureOpts,
+  AsyncImageResponse,
+  AsyncImageFixtureOpts,
+  SeeapiConfig,
+  SeeapiModelInfo,
+  KieConfig,
+  FalConfig,
   ToolCallMessage,
   RecordConfig,
   RecordProviderKey,

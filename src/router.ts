@@ -451,6 +451,10 @@ export function matchFixtureDiagnostic(
           (reqEndpoint === "audio-gen" && isAudioResponse(r)) ||
           (reqEndpoint === "fal-audio" && isAudioResponse(r)) ||
           (reqEndpoint === "fal" && (isJSONResponse(r) || isErrorResponse(r))) ||
+          (reqEndpoint === "seeapi" &&
+            (isImageResponse(r) || isJSONResponse(r) || isErrorResponse(r))) ||
+          (reqEndpoint === "kie" &&
+            (isImageResponse(r) || isJSONResponse(r) || isErrorResponse(r))) ||
           (reqEndpoint === "elevenlabs-voice-design" &&
             (isJSONResponse(r) || isErrorResponse(r))) ||
           (reqEndpoint === "elevenlabs-voice" && (isJSONResponse(r) || isErrorResponse(r))) ||
@@ -647,6 +651,25 @@ export function matchFixtureDiagnostic(
       }
     }
 
+    if (match.modelOrPrompt !== undefined) {
+      const target = match.modelOrPrompt;
+      const promptText = getLastUserText(effective.messages);
+      if (typeof target === "string") {
+        const modelMatches =
+          effective.model === target ||
+          (Boolean(effective.model?.startsWith(target)) &&
+            /^-\d/.test((effective.model ?? "").slice(target.length)));
+        const promptMatches =
+          promptText !== null &&
+          (useExactMatch ? promptText === target : promptText.includes(target));
+        if (!modelMatches && !promptMatches) continue;
+      } else {
+        const modelMatches = regexTest(target, effective.model ?? "");
+        const promptMatches = promptText !== null && regexTest(target, promptText);
+        if (!modelMatches && !promptMatches) continue;
+      }
+    }
+
     // hasToolResult — request-SHAPE predicate scoped to the CURRENT turn. Shares
     // the exact predicate with the recorder via {@link currentTurnHasToolResult}
     // so the value the matcher CHECKS can never drift from the value the recorder
@@ -656,6 +679,18 @@ export function matchFixtureDiagnostic(
     // sequence/turn state".
     if (match.hasToolResult !== undefined) {
       if (currentTurnHasToolResult(effective.messages) !== match.hasToolResult) continue;
+    }
+
+    if (match.hasInputImages !== undefined) {
+      const count =
+        typeof effective._inputImagesCount === "number" ? effective._inputImagesCount : 0;
+      if (count > 0 !== match.hasInputImages) continue;
+    }
+
+    if (match.inputImageCount !== undefined) {
+      const count =
+        typeof effective._inputImagesCount === "number" ? effective._inputImagesCount : 0;
+      if (count !== match.inputImageCount) continue;
     }
 
     // A raw fixture for another wire is skipped here, after its content

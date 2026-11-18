@@ -144,6 +144,11 @@ export interface ChatCompletionRequest {
    * openrouter ids do not overlap).
    */
   _videoProvider?: "openrouter" | "veo" | "grok" | "byteplus";
+  /**
+   * Input reference image count, set by async image providers (SeeAPI, KIE)
+   * for `hasInputImages` / `inputImageCount` fixture matching.
+   */
+  _inputImagesCount?: number;
   [key: string]: unknown;
 }
 
@@ -224,6 +229,12 @@ export interface FixtureMatch {
    */
   toolNamespace?: string;
   model?: string | RegExp;
+  /**
+   * Matches either `req.model` or the prompt text (`userMessage`), used by
+   * `onSeeapiImage` / `onKieImage` when called with a single `modelOrPrompt`
+   * pattern so `sequenceIndex` sibling grouping works cleanly.
+   */
+  modelOrPrompt?: string | RegExp;
   responseFormat?: string;
   predicate?: (req: ChatCompletionRequest) => boolean;
   /** Which occurrence of this match to respond to (0-indexed). Undefined means match any. */
@@ -238,6 +249,15 @@ export interface FixtureMatch {
    * request has no user message, it falls back to scanning the whole conversation.
    */
   hasToolResult?: boolean;
+  /**
+   * Match requests based on whether input reference images (`input_images` on
+   * SeeAPI, `image_input` on KIE) are present (`true`) or absent (`false`).
+   */
+  hasInputImages?: boolean;
+  /**
+   * Match requests with an exact count of input reference images.
+   */
+  inputImageCount?: number;
   endpoint?:
     | "chat"
     | "image"
@@ -257,6 +277,8 @@ export interface FixtureMatch {
     | "byteplus-tts"
     | "fal-audio"
     | "fal"
+    | "seeapi"
+    | "kie"
     | "realtime"
     | "realtime-transcription"
     | "realtime-translation"
@@ -1078,6 +1100,15 @@ export interface Fixture {
    * `false` does not turn off `nonStreamingTiming: true`.
    */
   nonStreamingTimingAllProviders?: boolean;
+  /**
+   * Per-fixture poll progression overrides for async image/queue providers
+   * (SeeAPI, KIE, fal). Takes precedence over server-level defaults.
+   */
+  pollsBeforeInProgress?: number;
+  /**
+   * Per-fixture poll threshold before transitioning to terminal state.
+   */
+  pollsBeforeCompleted?: number;
   metadata?: {
     systemHash?: string;
     toolsHash?: string;
@@ -1092,6 +1123,34 @@ export type EmbeddingFixtureOpts = Pick<FixtureOpts, "latency" | "chaos">;
  * `queue-result` response (see {@link RawJSONResponse.billableUnits}).
  */
 export type FalQueueOpts = FixtureOpts & { billableUnits?: number };
+
+/**
+ * Response shape for `LLMock.onSeeapiImage` and `LLMock.onKieImage`.
+ * Accepts `{ urls: [...] }` shorthand, standard `ImageResponse`, or an
+ * async failure `{ error, failCode? }`.
+ */
+export interface AsyncImageResponse {
+  urls?: string[];
+  images?: ImageItem[];
+  image?: ImageItem;
+  error?: string;
+  failCode?: string;
+  status?: "succeeded" | "failed" | "canceled" | "cancelled" | "refunded" | "expired";
+  consumedCredits?: number;
+}
+
+/**
+ * Options for `LLMock.onSeeapiImage` and `LLMock.onKieImage`.
+ */
+export type AsyncImageFixtureOpts = FixtureOpts & {
+  prompt?: string | RegExp;
+  model?: string | RegExp;
+  hasInputImages?: boolean;
+  inputImageCount?: number;
+  sequenceIndex?: number;
+  context?: string;
+  delayMs?: number;
+};
 
 // Fixture file format (JSON on disk)
 //
@@ -1260,6 +1319,8 @@ export interface FixtureFileEntry {
      * `FixtureMatch.hasToolResult`.
      */
     hasToolResult?: boolean;
+    hasInputImages?: boolean;
+    inputImageCount?: number;
     endpoint?:
       | "chat"
       | "image"
@@ -1279,6 +1340,8 @@ export interface FixtureFileEntry {
       | "byteplus-tts"
       | "fal-audio"
       | "fal"
+      | "seeapi"
+      | "kie"
       | "realtime"
       | "realtime-transcription"
       | "realtime-translation"
@@ -1288,6 +1351,8 @@ export interface FixtureFileEntry {
   };
   response: FixtureFileResponse;
   latency?: number;
+  pollsBeforeInProgress?: number;
+  pollsBeforeCompleted?: number;
   chunkSize?: number;
   truncateAfterChunks?: number;
   disconnectAfterMs?: number;
@@ -1836,6 +1901,62 @@ export interface MockServerOptions {
    * is whatever the recorded/authored envelope carries.
    */
   bytePlusVideo?: FalQueueConfig;
+  /**
+   * Configure SeeAPI async image generation mock (routes under `/seeapi/...`).
+   */
+  seeapi?: SeeapiConfig;
+  /**
+   * Configure KIE async image generation mock (routes under `/kie/...`).
+   */
+  kie?: KieConfig;
+  /**
+   * Configure fal.ai compatibility options (vendor-path routing and webhook delivery).
+   */
+  fal?: FalConfig;
+}
+
+export interface SeeapiModelInfo {
+  id: string;
+  provider?: string;
+  endpoints?: string[];
+}
+
+export interface SeeapiConfig extends FalQueueConfig {
+  /** Reject unknown fields in `body.input` with HTTP 400. Default: true. */
+  strictInputFields?: boolean;
+  /** Per-model allowed `body.input` field lists. */
+  allowedInputFieldsByModel?: Record<string, readonly string[]>;
+  /** Default allowed `body.input` fields when a model is not in `allowedInputFieldsByModel`. */
+  defaultAllowedInputFields?: readonly string[];
+  /** Require `Authorization: Bearer <key>` on SeeAPI requests. Default: false. */
+  requireAuth?: boolean;
+  /** Static model catalog returned by `GET /seeapi/v1/models`. */
+  models?: SeeapiModelInfo[];
+}
+
+export interface KieConfig extends FalQueueConfig {
+  /** Deliver `callBackUrl` webhooks when tasks reach terminal state. Default: true. */
+  callbacks?: boolean;
+  /** Require `Authorization: Bearer <key>` on KIE requests. Default: true. */
+  requireAuth?: boolean;
+}
+
+export interface FalConfig {
+  /**
+   * Serve path-based fal queue requests under `/fal/{owner}/{app}[/{subpath...}]`
+   * without requiring the `x-fal-target-host` header. Default: false.
+   */
+  vendorPaths?: boolean;
+  /**
+   * Deliver `?fal_webhook=<url>` callbacks when jobs reach terminal state.
+   * Defaults to `true` when `vendorPaths` is true, `false` otherwise.
+   */
+  webhook?: boolean;
+  /**
+   * HTTP status returned by `GET .../requests/{id}` while a job is still running.
+   * Defaults to `400` for vendor-path requests (no `x-fal-target-host`), `202` otherwise.
+   */
+  resultPendingStatus?: 202 | 400;
 }
 
 export interface ApiKeyAuthConfig {
@@ -1916,6 +2037,18 @@ export interface HandlerDefaults {
    * is whatever the recorded/authored envelope carries.
    */
   bytePlusVideo?: FalQueueConfig;
+  /**
+   * Configure SeeAPI async image generation mock (routes under `/seeapi/...`).
+   */
+  seeapi?: SeeapiConfig;
+  /**
+   * Configure KIE async image generation mock (routes under `/kie/...`).
+   */
+  kie?: KieConfig;
+  /**
+   * Configure fal.ai compatibility options (vendor-path routing and webhook delivery).
+   */
+  fal?: FalConfig;
 }
 
 // MCP fakes — scenario-scoped MCP tool fakes in fixture files (`mcpFakes`)
