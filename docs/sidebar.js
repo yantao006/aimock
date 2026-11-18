@@ -42,6 +42,8 @@
         { label: "Grok Imagine Video", href: "/grok-video" },
         { label: "BytePlus Ark Video", href: "/byteplus-video" },
         { label: "fal.ai", href: "/fal-ai" },
+        { label: "SeeAPI Image", href: "/seeapi" },
+        { label: "KIE Image", href: "/kie" },
       ],
     },
     {

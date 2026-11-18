@@ -1,0 +1,36 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "seeapi",
+        "model": "nano-banana-2-1"
+      },
+      "response": {
+        "urls": ["https://ai-photo-editor.net/examples/tool-open-eyes.jpg"],
+        "consumedCredits": 10
+      }
+    },
+    {
+      "match": {
+        "endpoint": "kie",
+        "model": "nano-banana-2"
+      },
+      "response": {
+        "urls": ["https://ai-photo-editor.net/examples/tool-open-eyes.jpg"]
+      }
+    },
+    {
+      "match": {
+        "endpoint": "fal",
+        "model": "openai/gpt-image-2.6/flare/edit"
+      },
+      "response": {
+        "images": [
+          {
+            "url": "https://ai-photo-editor.net/examples/tool-open-eyes.jpg"
+          }
+        ]
+      }
+    }
+  ]
+}

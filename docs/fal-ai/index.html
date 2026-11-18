@@ -341,6 +341,30 @@
           Responses are saved as fixtures that can be replayed without network access.
         </p>
 
+        <h2>Vendor-Path &amp; Webhook Mode (Opt-In)</h2>
+        <p>
+          Clients that configure a base URL directly (such as
+          <code>http://127.0.0.1:4010/fal</code>) without sending the
+          <code>x-fal-target-host</code> header can opt into vendor-path compatibility via
+          <code>fal: { vendorPaths: true, webhook: true }</code>:
+        </p>
+        <ul>
+          <li>
+            <code>POST /fal/{owner}/{app}/{subpath...}</code> &mdash; enqueues the job and returns
+            <code>status_url</code> / <code>response_url</code> scoped to
+            <code>/fal/{owner}/{app}/requests/{id}</code>
+          </li>
+          <li>
+            <code>GET /fal/{owner}/{app}/requests/{id}</code> &mdash; returns HTTP 400 while running
+            and the final payload once completed
+          </li>
+          <li>
+            <code>?fal_webhook=&lt;url&gt;</code> &mdash; POSTs
+            <code>{ request_id, status: "OK" | "ERROR", payload, error }</code> once the job reaches
+            a terminal state
+          </li>
+        </ul>
+
         <h2>Legacy Routes</h2>
         <p>
           For backward compatibility, aimock also supports the older path-based routing convention

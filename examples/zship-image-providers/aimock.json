@@ -1,0 +1,22 @@
+{
+  "port": 4010,
+  "host": "127.0.0.1",
+  "llm": {
+    "fixtures": "./fixtures",
+    "logLevel": "info"
+  },
+  "seeapi": {
+    "strictInputFields": true,
+    "pollsBeforeInProgress": 1,
+    "pollsBeforeCompleted": 2
+  },
+  "kie": {
+    "callbacks": true,
+    "pollsBeforeInProgress": 1,
+    "pollsBeforeCompleted": 2
+  },
+  "fal": {
+    "vendorPaths": true,
+    "webhook": true
+  }
+}
