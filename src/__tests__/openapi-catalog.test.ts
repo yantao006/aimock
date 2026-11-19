@@ -2000,6 +2000,7 @@ describe("OpenAPI route catalog", () => {
       SEARCH_PATH: ["POST /search"],
       SEEAPI_GENERATIONS_PATH: ["POST /seeapi/v1/generations"],
       SEEAPI_GENERATION_ID_RE: ["GET /seeapi/v1/generations/{id}"],
+      SEEAPI_INFERENCES_PATH: ["POST /seeapi/v1/inferences"],
       SEEAPI_MODELS_PATH: ["GET /seeapi/v1/models"],
       SPEECH_PATH: ["POST /v1/audio/speech"],
       TRANSCRIPTIONS_PATH: ["POST /v1/audio/transcriptions"],

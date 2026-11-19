@@ -879,3 +879,74 @@ export async function handleSeeapiModels(
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ models }));
 }
+
+// ─── POST /seeapi/v1/inferences — image moderation (nsfw-filter) ─────────────
+
+/**
+ * Answers the moderation call some sites make before accepting an upload:
+ * `{ model: "nsfw-filter", endpoint: "image-moderation", input: { image_url } }`.
+ * The reply is already `succeeded`, so clients that poll never need to.
+ * `defaults.seeapi.moderationFlaggedUrlPattern` makes matching URLs come back flagged.
+ */
+export async function handleSeeapiInference(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  raw: string,
+  journal: Journal,
+  defaults: HandlerDefaults,
+  setCorsHeaders: (res: http.ServerResponse) => void,
+): Promise<void> {
+  setCorsHeaders(res);
+  const path = req.url ?? "/seeapi/v1/inferences";
+  const method = req.method ?? "POST";
+  const headers = flattenHeaders(req.headers);
+
+  type ModerationBody = { model?: unknown; input?: { image_url?: unknown } } | null;
+  let body: ModerationBody;
+  try {
+    body = JSON.parse(raw) as ModerationBody;
+  } catch {
+    sendSeeapiValidationError(res, 400, "invalid JSON body", "invalid_request", journal, {
+      method,
+      path,
+      headers,
+      body: null,
+    });
+    return;
+  }
+
+  const imageUrl = typeof body?.input?.image_url === "string" ? body.input.image_url : "";
+  if (!imageUrl) {
+    sendSeeapiValidationError(
+      res,
+      400,
+      "invalid input: image_url is required",
+      "invalid_request",
+      journal,
+      { method, path, headers, body: null },
+    );
+    return;
+  }
+
+  const patternSource = defaults.seeapi?.moderationFlaggedUrlPattern;
+  const flagged = patternSource ? new RegExp(patternSource).test(imageUrl) : false;
+  const id = `inf-${Math.random().toString(36).slice(2, 12)}`;
+
+  journal.add({
+    method,
+    path,
+    headers,
+    body: null,
+    service: "seeapi",
+    response: { status: 200, fixture: null },
+  });
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(
+    JSON.stringify({
+      id,
+      status: "succeeded",
+      result: { data: { flagged, categories: flagged ? { sexual: ["sexual"] } : {} } },
+    }),
+  );
+}

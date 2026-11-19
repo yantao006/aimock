@@ -1932,6 +1932,12 @@ export interface SeeapiConfig extends FalQueueConfig {
   requireAuth?: boolean;
   /** Static model catalog returned by `GET /seeapi/v1/models`. */
   models?: SeeapiModelInfo[];
+  /**
+   * Regular expression (source string) tested against `input.image_url` of
+   * `POST /seeapi/v1/inferences`. A match answers `flagged: true` with the
+   * category `sexual`; anything else answers `flagged: false`. Default: never flagged.
+   */
+  moderationFlaggedUrlPattern?: string;
 }
 
 export interface KieConfig extends FalQueueConfig {

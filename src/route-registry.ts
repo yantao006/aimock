@@ -83,6 +83,7 @@ export const BYTEPLUS_TTS_PATH = "/api/v3/tts/create";
 export const SEEAPI_GENERATIONS_PATH = "/seeapi/v1/generations";
 export const SEEAPI_GENERATION_ID_RE = /^\/seeapi\/v1\/generations\/([^/]+)$/;
 export const SEEAPI_MODELS_PATH = "/seeapi/v1/models";
+export const SEEAPI_INFERENCES_PATH = "/seeapi/v1/inferences";
 export const KIE_CREATE_TASK_PATH = "/kie/api/v1/jobs/createTask";
 export const KIE_RECORD_INFO_PATH = "/kie/api/v1/jobs/recordInfo";
 export const FAL_QUEUE_SUBMIT_RE = /^\/fal\/queue\/submit\/(.+)$/;
@@ -586,6 +587,12 @@ export const ROUTE_DEFINITIONS: RouteDefinition[] = [
     path: SEEAPI_MODELS_PATH,
     service: "seeapi",
     description: "SeeAPI model catalog",
+  },
+  {
+    method: "POST",
+    path: SEEAPI_INFERENCES_PATH,
+    service: "seeapi",
+    description: "SeeAPI image moderation (nsfw-filter), answered synchronously",
   },
   // KIE
   {

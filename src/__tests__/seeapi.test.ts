@@ -488,3 +488,58 @@ describe("SeeAPI mock (/seeapi/v1/...)", () => {
     expect(p2.generation.result.assets[0].url).toBe("https://assets.seeapi.com/from-file.png");
   });
 });
+
+// ─── POST /seeapi/v1/inferences — image moderation ───────────────────────────
+
+describe("SeeAPI moderation (/seeapi/v1/inferences)", () => {
+  let mock: LLMock | undefined;
+
+  afterEach(async () => {
+    await mock?.stop();
+    mock = undefined;
+  });
+
+  const moderate = (url: string, imageUrl: string) =>
+    fetch(`${url}/seeapi/v1/inferences`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "mod-1" },
+      body: JSON.stringify({
+        model: "nsfw-filter",
+        endpoint: "image-moderation",
+        provider: "seeapi",
+        input: { image_url: imageUrl },
+      }),
+    });
+
+  test("answers succeeded and not flagged by default", async () => {
+    mock = new LLMock({ port: 0 });
+    await mock.start();
+    const res = await moderate(mock.url, "https://example.test/photo.jpg");
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.status).toBe("succeeded");
+    expect(json.result.data).toEqual({ flagged: false, categories: {} });
+  });
+
+  test("flags URLs matching moderationFlaggedUrlPattern", async () => {
+    mock = new LLMock({ port: 0, seeapi: { moderationFlaggedUrlPattern: "blocked" } });
+    await mock.start();
+    const ok = await (await moderate(mock.url, "https://example.test/fine.jpg")).json();
+    expect(ok.result.data.flagged).toBe(false);
+    const bad = await (await moderate(mock.url, "https://example.test/blocked.jpg")).json();
+    expect(bad.result.data.flagged).toBe(true);
+    expect(bad.result.data.categories).toEqual({ sexual: ["sexual"] });
+  });
+
+  test("rejects a body without image_url with 400 and journals the call", async () => {
+    mock = new LLMock({ port: 0 });
+    await mock.start();
+    const res = await fetch(`${mock.url}/seeapi/v1/inferences`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "nsfw-filter", input: {} }),
+    });
+    expect(res.status).toBe(400);
+    expect(mock.getRequests().some((r) => r.path === "/seeapi/v1/inferences")).toBe(true);
+  });
+});

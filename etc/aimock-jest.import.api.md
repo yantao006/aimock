@@ -1366,6 +1366,7 @@ interface SeeapiConfig extends FalQueueConfig {
     allowedInputFieldsByModel?: Record<string, readonly string[]>;
     defaultAllowedInputFields?: readonly string[];
     models?: SeeapiModelInfo[];
+    moderationFlaggedUrlPattern?: string;
     requireAuth?: boolean;
     strictInputFields?: boolean;
 }

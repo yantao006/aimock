@@ -194,6 +194,7 @@ import { handleFal, falQueueStates, falWillHandle } from "./fal.js";
 import {
   handleSeeapiCreate,
   handleSeeapiModels,
+  handleSeeapiInference,
   handleSeeapiStatus,
   SeeapiJobMap,
 } from "./seeapi.js";
@@ -314,6 +315,7 @@ import {
   SEEAPI_GENERATIONS_PATH,
   SEEAPI_GENERATION_ID_RE,
   SEEAPI_MODELS_PATH,
+  SEEAPI_INFERENCES_PATH,
   KIE_CREATE_TASK_PATH,
   KIE_RECORD_INFO_PATH,
   FAL_QUEUE_SUBMIT_RE,
@@ -5453,6 +5455,18 @@ async function startServer(
           setCorsHeaders,
           seeapiJobs,
         );
+      } catch (err: unknown) {
+        routeError(req, res, err, pathname, { service: "seeapi" });
+      }
+      return;
+    }
+
+    // POST /seeapi/v1/inferences — SeeAPI image moderation
+    if (pathname === SEEAPI_INFERENCES_PATH && req.method === "POST") {
+      setCorsHeaders(res);
+      try {
+        const raw = await readBody(req);
+        await handleSeeapiInference(req, res, raw, journal, defaults, setCorsHeaders);
       } catch (err: unknown) {
         routeError(req, res, err, pathname, { service: "seeapi" });
       }

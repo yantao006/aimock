@@ -1660,6 +1660,43 @@ const COMPONENTS: Record<string, unknown> = {
       },
     },
   },
+  SeeapiInferenceRequest: {
+    type: "object",
+    required: ["model", "input"],
+    properties: {
+      model: { type: "string", example: "nsfw-filter" },
+      endpoint: { type: "string", example: "image-moderation" },
+      provider: { type: "string", example: "seeapi" },
+      input: {
+        type: "object",
+        required: ["image_url"],
+        properties: { image_url: { type: "string" } },
+      },
+    },
+  },
+  SeeapiInferenceResponse: {
+    type: "object",
+    required: ["id", "status", "result"],
+    properties: {
+      id: { type: "string" },
+      status: { type: "string", enum: ["succeeded"] },
+      result: {
+        type: "object",
+        properties: {
+          data: {
+            type: "object",
+            properties: {
+              flagged: { type: "boolean" },
+              categories: {
+                type: "object",
+                additionalProperties: { type: "array", items: { type: "string" } },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   KieCreateTaskRequest: {
     type: "object",
     required: ["model", "input"],
@@ -2985,6 +3022,10 @@ const SCHEMA_REFS: Record<string, OperationSchemas> = {
   },
   "GET /seeapi/v1/generations/{id}": { response: "SeeapiGenerationEnvelope" },
   "GET /seeapi/v1/models": { response: "SeeapiModelsResponse" },
+  "POST /seeapi/v1/inferences": {
+    request: "SeeapiInferenceRequest",
+    response: "SeeapiInferenceResponse",
+  },
   // KIE
   "POST /kie/api/v1/jobs/createTask": {
     request: "KieCreateTaskRequest",
